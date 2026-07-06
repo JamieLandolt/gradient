@@ -55,6 +55,8 @@ def open_pull_request(token: str, title: str, body: str, head: str, base: str) -
     result = subprocess.run(
         [
             "curl", "-sS", "-X", "POST", url,
+            "-A", "Mozilla/5.0 (Macintosh)",  # Gitee WAF rejects curl's default UA
+            "--max-time", "60",
             "-H", "Content-Type: application/json",
             "-w", "\n%{http_code}",
             "-d", "@-",
