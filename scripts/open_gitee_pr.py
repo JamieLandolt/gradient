@@ -14,8 +14,6 @@ import json
 import os
 import subprocess
 import sys
-import urllib.error
-import urllib.request
 from pathlib import Path
 
 GITEE_API = "https://gitee.com/api/v5"
@@ -49,20 +47,30 @@ def current_branch() -> str:
 
 
 def open_pull_request(token: str, title: str, body: str, head: str, base: str) -> dict:
+    """POST via curl (urllib is unreliable against gitee.com); token goes via stdin."""
     url = f"{GITEE_API}/repos/{REPO_OWNER}/{REPO_NAME}/pulls"
     payload = json.dumps(
         {"access_token": token, "title": title, "body": body, "head": head, "base": base}
-    ).encode()
-    request = urllib.request.Request(
-        url, data=payload, headers={"Content-Type": "application/json"}, method="POST"
     )
-    try:
-        with urllib.request.urlopen(request) as response:
-            return json.loads(response.read())
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode(errors="replace")
-        print(f"error: Gitee API returned {exc.code}: {detail}", file=sys.stderr)
+    result = subprocess.run(
+        [
+            "curl", "-sS", "-X", "POST", url,
+            "-H", "Content-Type: application/json",
+            "-w", "\n%{http_code}",
+            "-d", "@-",
+        ],
+        input=payload,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        print(f"error: curl failed: {result.stderr}", file=sys.stderr)
         sys.exit(1)
+    response_body, _, status_code = result.stdout.rpartition("\n")
+    if not status_code.startswith("2"):
+        print(f"error: Gitee API returned {status_code}: {response_body}", file=sys.stderr)
+        sys.exit(1)
+    return json.loads(response_body)
 
 
 def main() -> None:
