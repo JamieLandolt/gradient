@@ -2,11 +2,20 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Link, Route, Routes } from 'react-router-dom'
 
 import { Layout } from './components/Layout'
+import { AccountPage } from './features/account/AccountPage'
 import { LoginPage } from './features/auth/LoginPage'
 import { ProtectedRoute } from './features/auth/ProtectedRoute'
 import { RegisterPage } from './features/auth/RegisterPage'
 import { SessionProvider } from './features/auth/SessionProvider'
 import { GuestCalculatorPage } from './features/calculator/GuestCalculatorPage'
+import { CourseDetailPage } from './features/courses/CourseDetailPage'
+import { DashboardPage } from './features/dashboard/DashboardPage'
+import { HistoryPage } from './features/history/HistoryPage'
+import { ImportPage } from './features/import/ImportPage'
+import { PlannerPage } from './features/planner/PlannerPage'
+import { RecommendationsPage } from './features/recommendations/RecommendationsPage'
+import { SearchPage } from './features/search/SearchPage'
+import { StudyPlanPage } from './features/study-plans/StudyPlanPage'
 import { createQueryClient } from './lib/queryClient'
 
 const queryClient = createQueryClient()
@@ -28,15 +37,6 @@ function HomePage() {
   )
 }
 
-function DashboardPlaceholder() {
-  return (
-    <main>
-      <h1>Dashboard</h1>
-      <p className="page-status">Your courses will appear here.</p>
-    </main>
-  )
-}
-
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -49,7 +49,15 @@ export default function App() {
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
               <Route element={<ProtectedRoute />}>
-                <Route path="/dashboard" element={<DashboardPlaceholder />} />
+                <Route path="/dashboard" element={<DashboardPage />} />
+                <Route path="/courses/:enrolmentId" element={<CourseDetailPage />} />
+                <Route path="/history" element={<HistoryPage />} />
+                <Route path="/planner" element={<PlannerPage />} />
+                <Route path="/import" element={<ImportPage />} />
+                <Route path="/recommendations" element={<RecommendationsPage />} />
+                <Route path="/study-plans" element={<StudyPlanPage />} />
+                <Route path="/search" element={<SearchPage />} />
+                <Route path="/account" element={<AccountPage />} />
               </Route>
             </Route>
           </Routes>
