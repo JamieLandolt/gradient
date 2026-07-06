@@ -30,3 +30,6 @@ supabase/.branches/
 
 # Source documents
 Gradient_SRS_Master.docx
+
+# Python build artifacts
+*.egg-info/
