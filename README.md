@@ -32,7 +32,7 @@ Prerequisites: Python 3.11+, Node 20+, the Supabase CLI, and a Supabase project.
 make install
 
 # 2. Configure environment
-cp .env.example backend/.env    # fill in Supabase URL + keys
+cp .env.example backend/.env    # set APP_MODE=supabase and fill in URL + keys
 cp .env.example frontend/.env   # fill in the VITE_ values
 
 # 3. Apply database migrations and seed sample UQ courses
@@ -44,6 +44,13 @@ make seed
 make backend-dev    # http://localhost:8000 (API docs at /docs)
 make frontend-dev   # http://localhost:5173
 ```
+
+Without a Supabase project the backend still boots (`APP_MODE=demo`, the
+default): the health check, API docs, and the public guest calculator work;
+anything touching student data needs `APP_MODE=supabase` with project keys.
+
+In the Supabase dashboard, disable **email confirmation** (Auth → Providers →
+Email) for local development, or the register → login flow will stall.
 
 ## Development
 
