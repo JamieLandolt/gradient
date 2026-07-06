@@ -1,0 +1,16 @@
+Electronic Course Profile
+Course code: BIOL1020
+Course title: Genes, Cells & Evolution
+Units: 2
+Semester: Semester 1, 2026
+Description: Foundations of modern biology: cell structure, molecular
+genetics, inheritance, and evolutionary processes, with laboratory practicals
+developing experimental and data-analysis skills.
+
+Assessment:
+- Laboratory Practicals | weight: 25% | max mark: 100 | due: 2026-05-29
+- Online Quizzes | weight: 15% | max mark: 60 | due: 2026-05-25
+- Mid-semester Exam | weight: 20% | max mark: 40 | due: 2026-04-14
+- Final Exam | weight: 40% | max mark: 100 | due: 2026-06-18
+
+Prerequisite: Year 12 Biology or equivalent bridging course recommended

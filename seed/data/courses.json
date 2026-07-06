@@ -1,0 +1,284 @@
+{
+  "comment": "Sample UQ-style catalogue. Assessment structures are plausible but illustrative — marked data_source=seed and verified so the app is demo-able. due_date belongs to the seeded profile version (first 2026 offering).",
+  "courses": [
+    {
+      "code": "CSSE1001",
+      "title": "Introduction to Software Engineering",
+      "units": 2,
+      "description": "Introduction to programming and software engineering using Python: problem decomposition, abstraction, testing, classes and object-oriented design, and development of small applications.",
+      "offering_semesters": ["S1", "S2"],
+      "version_label": "2026S1",
+      "assessments": [
+        { "name": "Assignment 1", "weight": 20, "max_mark": 100, "due_date": "2026-03-27" },
+        { "name": "Assignment 2", "weight": 30, "max_mark": 100, "due_date": "2026-05-15" },
+        { "name": "Final Exam", "weight": 50, "max_mark": 100, "due_date": "2026-06-12", "hurdle_min_percent": 40, "hurdle_description": "Must score at least 40% on the final exam to pass the course." }
+      ]
+    },
+    {
+      "code": "MATH1051",
+      "title": "Calculus & Linear Algebra I",
+      "units": 2,
+      "description": "Differential and integral calculus of one variable, sequences and series, vectors, matrices and linear equations. Foundation mathematics for science, engineering and computing.",
+      "offering_semesters": ["S1", "S2", "SUMMER"],
+      "version_label": "2026S1",
+      "assessments": [
+        { "name": "Weekly Quizzes", "weight": 20, "max_mark": 100, "due_date": "2026-05-29" },
+        { "name": "Mid-semester Exam", "weight": 25, "max_mark": 50, "due_date": "2026-04-17" },
+        { "name": "Final Exam", "weight": 55, "max_mark": 100, "due_date": "2026-06-15", "hurdle_min_percent": 45, "hurdle_description": "Must score at least 45% on the final exam." }
+      ]
+    },
+    {
+      "code": "MATH1071",
+      "title": "Advanced Calculus & Linear Algebra I",
+      "units": 2,
+      "description": "Rigorous treatment of calculus and linear algebra for high-achieving students: proofs, epsilon-delta limits, vector spaces and linear transformations.",
+      "offering_semesters": ["S1"],
+      "version_label": "2026S1",
+      "grade_cutoffs": { "7": 80, "6": 70, "5": 60, "4": 50, "3": 45, "2": 20, "1": 0 },
+      "assessments": [
+        { "name": "Problem Sets", "weight": 30, "max_mark": 100, "due_date": "2026-05-22" },
+        { "name": "Mid-semester Exam", "weight": 20, "max_mark": 40, "due_date": "2026-04-15" },
+        { "name": "Final Exam", "weight": 50, "max_mark": 100, "due_date": "2026-06-16" }
+      ]
+    },
+    {
+      "code": "MATH1061",
+      "title": "Discrete Mathematics",
+      "units": 2,
+      "description": "Logic, set theory, relations and functions, induction, counting and combinatorics, graph theory and elementary number theory underpinning computer science.",
+      "offering_semesters": ["S1", "S2"],
+      "version_label": "2026S1",
+      "assessments": [
+        { "name": "Assignments", "weight": 30, "max_mark": 100, "due_date": "2026-05-20" },
+        { "name": "Mid-semester Exam", "weight": 20, "max_mark": 40, "due_date": "2026-04-16" },
+        { "name": "Final Exam", "weight": 50, "max_mark": 100, "due_date": "2026-06-10" }
+      ]
+    },
+    {
+      "code": "MATH1052",
+      "title": "Calculus & Linear Algebra II",
+      "units": 2,
+      "description": "Multivariate calculus, ordinary differential equations, Laplace transforms and further linear algebra, continuing MATH1051.",
+      "offering_semesters": ["S1", "S2"],
+      "version_label": "2026S1",
+      "assessments": [
+        { "name": "Weekly Quizzes", "weight": 20, "max_mark": 100, "due_date": "2026-05-29" },
+        { "name": "Mid-semester Exam", "weight": 25, "max_mark": 50, "due_date": "2026-04-20" },
+        { "name": "Final Exam", "weight": 55, "max_mark": 100, "due_date": "2026-06-18" }
+      ]
+    },
+    {
+      "code": "INFS1200",
+      "title": "Introduction to Information Systems",
+      "units": 2,
+      "description": "Information systems in organisations: data modelling, relational databases, SQL fundamentals, business processes and the role of information technology in decision making.",
+      "offering_semesters": ["S1", "S2"],
+      "version_label": "2026S1",
+      "assessments": [
+        { "name": "Database Assignment", "weight": 25, "max_mark": 100, "due_date": "2026-04-24" },
+        { "name": "Group Project", "weight": 25, "max_mark": 100, "due_date": "2026-05-29" },
+        { "name": "Final Exam", "weight": 50, "max_mark": 100, "due_date": "2026-06-11" }
+      ]
+    },
+    {
+      "code": "DECO1400",
+      "title": "Introduction to Web Design",
+      "units": 2,
+      "description": "Designing and building usable web sites: HTML, CSS, visual design principles, accessibility, information architecture and user-centred design methods.",
+      "offering_semesters": ["S1"],
+      "version_label": "2026S1",
+      "assessments": [
+        { "name": "Design Portfolio", "weight": 40, "max_mark": 100, "due_date": "2026-05-08" },
+        { "name": "Website Project", "weight": 40, "max_mark": 100, "due_date": "2026-06-01" },
+        { "name": "Reflective Report", "weight": 20, "max_mark": 50, "due_date": "2026-06-05" }
+      ]
+    },
+    {
+      "code": "STAT1201",
+      "title": "Analysis of Scientific Data",
+      "units": 2,
+      "description": "Statistical thinking for scientists: study design, probability, estimation, hypothesis testing, regression and analysis of variance with real data sets.",
+      "offering_semesters": ["S1", "S2"],
+      "version_label": "2026S1",
+      "assessments": [
+        { "name": "Online Quizzes", "weight": 20, "max_mark": 100, "due_date": "2026-05-25" },
+        { "name": "Data Analysis Assignment", "weight": 30, "max_mark": 100, "due_date": "2026-05-11" },
+        { "name": "Final Exam", "weight": 50, "max_mark": 100, "due_date": "2026-06-09" }
+      ]
+    },
+    {
+      "code": "CSSE2002",
+      "title": "Programming in the Large",
+      "units": 2,
+      "description": "Java programming in larger systems: static typing, class hierarchies, interfaces, generics, exceptions, unit testing and reasoning about program correctness.",
+      "offering_semesters": ["S1", "S2"],
+      "version_label": "2026S1",
+      "assessments": [
+        { "name": "Assignment 1", "weight": 20, "max_mark": 100, "due_date": "2026-04-02" },
+        { "name": "Assignment 2", "weight": 25, "max_mark": 100, "due_date": "2026-05-21" },
+        { "name": "Mid-semester Exam", "weight": 15, "max_mark": 30, "due_date": "2026-04-14" },
+        { "name": "Final Exam", "weight": 40, "max_mark": 100, "due_date": "2026-06-13" }
+      ]
+    },
+    {
+      "code": "CSSE2010",
+      "title": "Introduction to Computer Systems",
+      "units": 2,
+      "description": "How computers work from gates to programs: digital logic, machine-level representation, assembly programming, memory and embedded microcontroller projects.",
+      "offering_semesters": ["S1", "S2"],
+      "version_label": "2026S1",
+      "assessments": [
+        { "name": "Lab Work", "weight": 20, "max_mark": 100, "due_date": "2026-05-22" },
+        { "name": "Microcontroller Project", "weight": 30, "max_mark": 100, "due_date": "2026-05-29" },
+        { "name": "Final Exam", "weight": 50, "max_mark": 100, "due_date": "2026-06-17" }
+      ]
+    },
+    {
+      "code": "CSSE2310",
+      "title": "Computer Systems Principles & Programming",
+      "units": 2,
+      "description": "Systems programming in C on UNIX: processes, file systems, networking with sockets, concurrency and the practical construction of robust command-line tools.",
+      "offering_semesters": ["S1"],
+      "version_label": "2026S1",
+      "assessments": [
+        { "name": "Assignment 1", "weight": 15, "max_mark": 100, "due_date": "2026-03-20" },
+        { "name": "Assignment 2", "weight": 15, "max_mark": 100, "due_date": "2026-04-24" },
+        { "name": "Assignment 3", "weight": 20, "max_mark": 100, "due_date": "2026-05-22" },
+        { "name": "Final Exam", "weight": 50, "max_mark": 100, "due_date": "2026-06-19", "hurdle_min_percent": 40, "hurdle_description": "Must score at least 40% on the final exam." }
+      ]
+    },
+    {
+      "code": "INFS2200",
+      "title": "Relational Database Systems",
+      "units": 2,
+      "description": "Relational database design and implementation: entity-relationship modelling, normalisation, SQL, transactions, indexing and query optimisation.",
+      "offering_semesters": ["S2"],
+      "version_label": "2026S2",
+      "assessments": [
+        { "name": "Schema Design Assignment", "weight": 25, "max_mark": 100, "due_date": "2026-09-04" },
+        { "name": "SQL Project", "weight": 25, "max_mark": 100, "due_date": "2026-10-16" },
+        { "name": "Final Exam", "weight": 50, "max_mark": 100, "due_date": "2026-11-13", "hurdle_min_percent": 40, "hurdle_description": "Must score at least 40% on the final exam." }
+      ]
+    },
+    {
+      "code": "COMP3506",
+      "title": "Algorithms & Data Structures",
+      "units": 2,
+      "description": "Design and analysis of algorithms and data structures: complexity analysis, sorting, trees, hashing, graphs, dynamic programming and greedy algorithms.",
+      "offering_semesters": ["S2"],
+      "version_label": "2026S2",
+      "assessments": [
+        { "name": "Assignment 1", "weight": 20, "max_mark": 100, "due_date": "2026-09-11" },
+        { "name": "Assignment 2", "weight": 20, "max_mark": 100, "due_date": "2026-10-23" },
+        { "name": "Final Exam", "weight": 60, "max_mark": 100, "due_date": "2026-11-16", "hurdle_min_percent": 40, "hurdle_description": "Must score at least 40% on the final exam." }
+      ]
+    },
+    {
+      "code": "COMS3200",
+      "title": "Computer Networks I",
+      "units": 2,
+      "description": "Computer networking: protocol layering, TCP/IP, routing, transport protocols, application protocols, network programming and network security fundamentals.",
+      "offering_semesters": ["S1"],
+      "version_label": "2026S1",
+      "assessments": [
+        { "name": "Assignment 1", "weight": 20, "max_mark": 100, "due_date": "2026-04-10" },
+        { "name": "Assignment 2", "weight": 30, "max_mark": 100, "due_date": "2026-05-25" },
+        { "name": "Final Exam", "weight": 50, "max_mark": 100, "due_date": "2026-06-20" }
+      ]
+    },
+    {
+      "code": "COMP3400",
+      "title": "Functional & Logic Programming",
+      "units": 2,
+      "description": "Declarative programming paradigms: functional programming with Haskell, higher-order functions, type systems, lazy evaluation, and logic programming with Prolog.",
+      "offering_semesters": ["S1"],
+      "version_label": "2026S1",
+      "assessments": [
+        { "name": "Haskell Assignment", "weight": 25, "max_mark": 100, "due_date": "2026-04-17" },
+        { "name": "Prolog Assignment", "weight": 25, "max_mark": 100, "due_date": "2026-05-29" },
+        { "name": "Final Exam", "weight": 50, "max_mark": 100, "due_date": "2026-06-08" }
+      ]
+    },
+    {
+      "code": "COMP3702",
+      "title": "Artificial Intelligence",
+      "units": 2,
+      "description": "Artificial intelligence techniques: search, constraint satisfaction, probabilistic reasoning, Markov decision processes, reinforcement learning and intelligent agent design.",
+      "offering_semesters": ["S2"],
+      "version_label": "2026S2",
+      "assessments": [
+        { "name": "Assignment 1 — Search", "weight": 20, "max_mark": 100, "due_date": "2026-08-28" },
+        { "name": "Assignment 2 — MDPs", "weight": 20, "max_mark": 100, "due_date": "2026-10-09" },
+        { "name": "Assignment 3 — Reinforcement Learning", "weight": 20, "max_mark": 100, "due_date": "2026-11-06" },
+        { "name": "Final Exam", "weight": 40, "max_mark": 100, "due_date": "2026-11-19", "hurdle_min_percent": 50, "hurdle_description": "Must score at least 50% on the final exam to achieve a grade of 4 or higher." }
+      ]
+    },
+    {
+      "code": "COMP4702",
+      "title": "Machine Learning",
+      "units": 2,
+      "description": "Machine learning theory and practice: supervised and unsupervised learning, neural networks and deep learning, model evaluation, regularisation and practical data-driven projects.",
+      "offering_semesters": ["S1"],
+      "version_label": "2026S1",
+      "assessments": [
+        { "name": "Problem Sets", "weight": 30, "max_mark": 100, "due_date": "2026-04-24" },
+        { "name": "ML Project", "weight": 30, "max_mark": 100, "due_date": "2026-05-29" },
+        { "name": "Final Exam", "weight": 40, "max_mark": 100, "due_date": "2026-06-16" }
+      ]
+    },
+    {
+      "code": "DECO2800",
+      "title": "Design Computing Studio 2 — Testable Design",
+      "units": 2,
+      "description": "Studio-based team development of interactive software: agile practices, version control, user experience design, game and simulation development in Java.",
+      "offering_semesters": ["S2"],
+      "version_label": "2026S2",
+      "grade_cutoffs": { "7": 88, "6": 78, "5": 68, "4": 52, "3": 47, "2": 25, "1": 0 },
+      "assessments": [
+        { "name": "Studio Sprint 1", "weight": 25, "max_mark": 100, "due_date": "2026-08-21" },
+        { "name": "Studio Sprint 2", "weight": 25, "max_mark": 100, "due_date": "2026-09-25" },
+        { "name": "Final Product & Demo", "weight": 35, "max_mark": 100, "due_date": "2026-11-06" },
+        { "name": "Individual Reflection", "weight": 15, "max_mark": 50, "due_date": "2026-11-13" }
+      ]
+    },
+    {
+      "code": "CSSE3012",
+      "title": "Software Engineering Studio: Design & Develop",
+      "units": 2,
+      "description": "Team-based software engineering project: requirements elicitation, architecture and design, implementation with continuous integration, code review and stakeholder demonstrations.",
+      "offering_semesters": ["S1"],
+      "version_label": "2026S1",
+      "assessments": [
+        { "name": "Requirements & Design Report", "weight": 30, "max_mark": 100, "due_date": "2026-04-10" },
+        { "name": "Implementation Milestones", "weight": 40, "max_mark": 100, "due_date": "2026-05-22" },
+        { "name": "Final Demonstration", "weight": 30, "max_mark": 100, "due_date": "2026-06-05" }
+      ]
+    },
+    {
+      "code": "INFS3200",
+      "title": "Advanced Database Systems",
+      "units": 2,
+      "description": "Advanced data management: distributed databases, data warehousing, data integration, NoSQL systems, and query processing at scale.",
+      "offering_semesters": ["S1"],
+      "version_label": "2026S1",
+      "assessments": [
+        { "name": "Assignment 1", "weight": 25, "max_mark": 100, "due_date": "2026-04-17" },
+        { "name": "Assignment 2", "weight": 25, "max_mark": 100, "due_date": "2026-05-29" },
+        { "name": "Final Exam", "weight": 50, "max_mark": 100, "due_date": "2026-06-12" }
+      ]
+    },
+    {
+      "code": "COMP4500",
+      "title": "Advanced Algorithms & Data Structures",
+      "units": 2,
+      "description": "Advanced algorithm design and analysis: amortised analysis, network flow, computational complexity, NP-completeness, approximation and randomised algorithms.",
+      "offering_semesters": ["S2"],
+      "version_label": "2026S2",
+      "assessments": [
+        { "name": "Assignment 1", "weight": 20, "max_mark": 100, "due_date": "2026-09-04" },
+        { "name": "Assignment 2", "weight": 20, "max_mark": 100, "due_date": "2026-10-16" },
+        { "name": "Final Exam", "weight": 60, "max_mark": 100, "due_date": "2026-11-17" }
+      ]
+    }
+  ]
+}

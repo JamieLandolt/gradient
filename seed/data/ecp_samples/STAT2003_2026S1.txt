@@ -1,0 +1,15 @@
+Electronic Course Profile
+Course code: STAT2003
+Course title: Probability & Statistics
+Units: 2
+Semester: Semester 1, 2026
+Description: Probability theory and statistical inference: random variables,
+distributions, expectation, limit theorems, estimation, confidence intervals
+and hypothesis testing for data science and quantitative modelling.
+
+Assessment:
+- Weekly Problem Sets | weight: 25% | max mark: 100 | due: 2026-05-22
+- Mid-semester Exam | weight: 25% | max mark: 50 | due: 2026-04-16
+- Final Exam | weight: 50% | max mark: 100 | due: 2026-06-11
+
+Prerequisite: MATH1051 and (STAT1201 or MATH1061)
