@@ -8,10 +8,63 @@ import type { Course, EnrolmentSummary, GpaSummary } from '../../types/api'
 
 const CURRENT_YEAR = 2026
 
+// Decorative ascending "grade curve" used until enough real grades exist.
+const MOTIF_BARS = [3, 4, 3.5, 5, 7]
+const MAX_GRADE = 7
+
 function GradeBadge({ grade }: { grade: number | null }) {
   if (grade === null) return null
   const tone = grade >= 5 ? 'ok' : grade >= 4 ? 'warn' : 'danger'
   return <span className={`grade-badge grade-${tone}`}>Grade {grade}</span>
+}
+
+interface UserProgramRow {
+  position: number
+  programs: { id: number; code: string; title: string; total_units: number }
+}
+
+function GpaStatCard({
+  gpa,
+  completedGrades,
+}: {
+  gpa: GpaSummary
+  completedGrades: number[]
+}) {
+  const { data: userPrograms } = useQuery({
+    queryKey: ['planner-programs'],
+    queryFn: () => apiClient.get<UserProgramRow[]>('/planner/programs'),
+  })
+  const targetUnits = (userPrograms ?? []).reduce(
+    (sum, row) => sum + row.programs.total_units,
+    0,
+  )
+  const bars =
+    completedGrades.length >= 2
+      ? [...completedGrades].sort((a, b) => a - b).slice(-5)
+      : MOTIF_BARS
+
+  return (
+    <section className="stat-card" aria-label="GPA summary">
+      <div className="stat-card-head">
+        <div className="stat-block">
+          <span className="stat-label">Cumulative GPA</span>
+          <span className="stat-value">{gpa.gpa === null ? '—' : gpa.gpa.toFixed(2)}</span>
+        </div>
+        <div className="stat-block right">
+          <span className="stat-label">Units</span>
+          <span className="stat-value-sm">
+            {gpa.total_units}
+            {targetUnits > 0 ? `/${targetUnits}` : ''}
+          </span>
+        </div>
+      </div>
+      <div className="rise-bars" aria-hidden="true">
+        {bars.map((height, index) => (
+          <span key={index} style={{ height: `${(height / MAX_GRADE) * 100}%` }} />
+        ))}
+      </div>
+    </section>
+  )
 }
 
 function AddCourseForm({ onDone }: { onDone: () => void }) {
@@ -95,17 +148,15 @@ export function DashboardPage() {
   })
 
   const inProgress = (enrolments ?? []).filter((e) => e.status !== 'completed')
+  const completedGrades = (enrolments ?? [])
+    .filter((e) => e.status === 'completed' && e.final_grade !== null)
+    .map((e) => e.final_grade as number)
 
   return (
     <main>
       <div className="page-heading">
         <h1>Dashboard</h1>
-        {gpa && (
-          <p className="gpa-summary" aria-label="GPA summary">
-            GPA: <strong>{gpa.gpa === null ? '—' : gpa.gpa.toFixed(2)}</strong> over{' '}
-            {gpa.completed_courses} completed course{gpa.completed_courses === 1 ? '' : 's'}
-          </p>
-        )}
+        {gpa && <GpaStatCard gpa={gpa} completedGrades={completedGrades} />}
       </div>
 
       <AddCourseForm

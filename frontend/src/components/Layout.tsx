@@ -1,5 +1,6 @@
 import { Link, NavLink, Outlet } from 'react-router-dom'
 
+import appIcon from '../../assets/gradient-app-icon.png'
 import { useSession } from '../features/auth/SessionProvider'
 
 export function DisclaimerBanner() {
@@ -18,6 +19,7 @@ export function Layout() {
     <div className="app-shell">
       <header className="app-header">
         <Link to="/" className="brand">
+          <img src={appIcon} alt="" className="brand-logo" />
           Gradient
         </Link>
         <nav aria-label="Main">
