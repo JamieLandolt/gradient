@@ -30,15 +30,22 @@ function HomePage() {
           <img src={companyLogo} alt="Gradient" className="home-logo" />
         </span>
       </h1>
-      <p>
+      <p className="home-tagline">
         Track your marks, see exactly what you need on remaining assessment to hit your
         target grade, and plan your degree around prerequisites.
       </p>
-      <p>
-        <Link to="/register">Create an account</Link>,{' '}
-        <Link to="/login">log in</Link>, or{' '}
-        <Link to="/calculator">try the target-grade calculator</Link> without one.
-      </p>
+      <div className="cta-row">
+        <Link to="/register" className="btn btn-primary">
+          Create an account
+        </Link>
+        <Link to="/login" className="btn btn-outline">
+          Log in
+        </Link>
+        <Link to="/calculator" className="btn btn-outline">
+          Try the calculator
+        </Link>
+      </div>
+      <p className="cta-note">The target-grade calculator works without an account.</p>
     </main>
   )
 }
