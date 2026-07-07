@@ -375,6 +375,21 @@ textarea { width: 100%; font-family: var(--mono); font-size: 0.88rem; margin-bot
 .gpa-summary { font-size: 1.05rem; }
 .target-calculator { margin-top: 1.75rem; }
 
+/* ── Home hero: full wordmark logo on a light plate ── */
+.home-hero { max-width: 620px; margin-top: 1.5rem; }
+.home-hero h1 { padding-bottom: 0; }
+.home-hero h1::after { content: none; }
+.home-hero p { color: var(--muted); font-size: 1.05rem; line-height: 1.6; }
+.brand-plate {
+  display: inline-block;
+  background: #f7f5ff;
+  border-radius: 14px;
+  padding: 1rem 1.6rem;
+  box-shadow: 0 14px 40px rgba(139, 92, 246, 0.22);
+  animation: fade-up 360ms ease both;
+}
+.home-logo { display: block; height: 84px; max-width: 100%; }
+
 /* ── Motion ── */
 @keyframes fade-up {
   from { opacity: 0; transform: translateY(8px); }
