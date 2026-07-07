@@ -1,0 +1,135 @@
+{
+  "comment": "Prerequisite expression trees per course. Node types: and / or (operands) and course (code). The loader flattens each tree into prerequisite_nodes rows and stores raw_text for provenance.",
+  "prerequisites": [
+    {
+      "course": "MATH1052",
+      "raw_text": "MATH1051 or MATH1071",
+      "expr": {
+        "type": "or",
+        "operands": [
+          { "type": "course", "code": "MATH1051" },
+          { "type": "course", "code": "MATH1071" }
+        ]
+      }
+    },
+    {
+      "course": "CSSE2002",
+      "raw_text": "CSSE1001",
+      "expr": { "type": "course", "code": "CSSE1001" }
+    },
+    {
+      "course": "CSSE2010",
+      "raw_text": "CSSE1001",
+      "expr": { "type": "course", "code": "CSSE1001" }
+    },
+    {
+      "course": "CSSE2310",
+      "raw_text": "CSSE2002 and CSSE2010",
+      "expr": {
+        "type": "and",
+        "operands": [
+          { "type": "course", "code": "CSSE2002" },
+          { "type": "course", "code": "CSSE2010" }
+        ]
+      }
+    },
+    {
+      "course": "INFS2200",
+      "raw_text": "INFS1200 or CSSE1001",
+      "expr": {
+        "type": "or",
+        "operands": [
+          { "type": "course", "code": "INFS1200" },
+          { "type": "course", "code": "CSSE1001" }
+        ]
+      }
+    },
+    {
+      "course": "COMP3506",
+      "raw_text": "CSSE2002 and (MATH1061 or MATH1071)",
+      "expr": {
+        "type": "and",
+        "operands": [
+          { "type": "course", "code": "CSSE2002" },
+          {
+            "type": "or",
+            "operands": [
+              { "type": "course", "code": "MATH1061" },
+              { "type": "course", "code": "MATH1071" }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "course": "COMS3200",
+      "raw_text": "CSSE2310",
+      "expr": { "type": "course", "code": "CSSE2310" }
+    },
+    {
+      "course": "COMP3400",
+      "raw_text": "CSSE2002",
+      "expr": { "type": "course", "code": "CSSE2002" }
+    },
+    {
+      "course": "COMP3702",
+      "raw_text": "COMP3506 and (STAT1201 or MATH1061)",
+      "expr": {
+        "type": "and",
+        "operands": [
+          { "type": "course", "code": "COMP3506" },
+          {
+            "type": "or",
+            "operands": [
+              { "type": "course", "code": "STAT1201" },
+              { "type": "course", "code": "MATH1061" }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "course": "COMP4702",
+      "raw_text": "COMP3702 and MATH1051",
+      "expr": {
+        "type": "and",
+        "operands": [
+          { "type": "course", "code": "COMP3702" },
+          { "type": "course", "code": "MATH1051" }
+        ]
+      }
+    },
+    {
+      "course": "DECO2800",
+      "raw_text": "CSSE2002 and DECO1400",
+      "expr": {
+        "type": "and",
+        "operands": [
+          { "type": "course", "code": "CSSE2002" },
+          { "type": "course", "code": "DECO1400" }
+        ]
+      }
+    },
+    {
+      "course": "CSSE3012",
+      "raw_text": "CSSE2002 and INFS2200",
+      "expr": {
+        "type": "and",
+        "operands": [
+          { "type": "course", "code": "CSSE2002" },
+          { "type": "course", "code": "INFS2200" }
+        ]
+      }
+    },
+    {
+      "course": "INFS3200",
+      "raw_text": "INFS2200",
+      "expr": { "type": "course", "code": "INFS2200" }
+    },
+    {
+      "course": "COMP4500",
+      "raw_text": "COMP3506",
+      "expr": { "type": "course", "code": "COMP3506" }
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+Electronic Course Profile
+Course code: COMP2140
+Course title: Web/Mobile Programming
+Units: 2
+Semester: Semester 2, 2026
+Description: Development of web and mobile applications: JavaScript and
+TypeScript, React, client-server architecture, REST APIs, responsive design
+and deployment. Students build and deploy a full-stack project.
+
+Assessment:
+- A1 React Application | weight: 30% | max mark: 100 | due: 2026-09-05
+- A2 Full-stack Project | weight: 30% | max mark: 100 | due: 2026-10-24
+- Final Exam | weight: 40% | max mark: 100 | due: 2026-11-14
+
+Hurdle: Must score at least 40% on the Final Exam to pass the course.
+
+Grade cut-offs: 7: 85, 6: 75, 5: 65, 4: 50, 3: 45, 2: 20, 1: 0
+
+Prerequisite: CSSE1001 or CSSE7030

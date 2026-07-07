@@ -1,0 +1,56 @@
+{
+  "comment": "Sample programs. A dual-degree student links to both programs via user_programs (position 1 and 2). Overlapping courses (e.g. CSSE1001, CSSE2002) count once (FR-3.6.3).",
+  "programs": [
+    {
+      "code": "BCompSc",
+      "title": "Bachelor of Computer Science (sample)",
+      "total_units": 32,
+      "courses": {
+        "required": [
+          "CSSE1001",
+          "MATH1051",
+          "MATH1061",
+          "CSSE2002",
+          "CSSE2010",
+          "CSSE2310",
+          "COMP3506",
+          "COMS3200"
+        ],
+        "elective": [
+          "MATH1052",
+          "MATH1071",
+          "STAT1201",
+          "COMP3400",
+          "COMP3702",
+          "COMP4702",
+          "COMP4500",
+          "INFS2200",
+          "INFS3200"
+        ]
+      }
+    },
+    {
+      "code": "BInfTech",
+      "title": "Bachelor of Information Technology (sample)",
+      "total_units": 32,
+      "courses": {
+        "required": [
+          "CSSE1001",
+          "INFS1200",
+          "DECO1400",
+          "CSSE2002",
+          "INFS2200",
+          "DECO2800"
+        ],
+        "elective": [
+          "CSSE2010",
+          "STAT1201",
+          "CSSE3012",
+          "INFS3200",
+          "COMS3200",
+          "COMP3506"
+        ]
+      }
+    }
+  ]
+}
