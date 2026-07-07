@@ -14,15 +14,17 @@ returns table (
 )
 language sql
 stable
+-- pgvector lives in the extensions schema; make its <=> operator resolvable.
+set search_path = public, extensions
 as $$
     select
         c.id,
         c.code,
         c.title,
         c.description,
-        1 - (e.embedding <=> query_embedding) as similarity
+        1 - (e.embedding operator(extensions.<=>) query_embedding) as similarity
     from public.course_embeddings e
     join public.courses c on c.id = e.course_id
-    order by e.embedding <=> query_embedding
+    order by e.embedding operator(extensions.<=>) query_embedding
     limit match_count;
 $$;

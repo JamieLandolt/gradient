@@ -30,6 +30,10 @@ supabase/.branches/
 
 # Source documents
 Gradient_SRS_Master.docx
+Gradient_SRS_Master.pdf
 
 # Python build artifacts
 *.egg-info/
+
+# Claude Code local settings
+.claude/
