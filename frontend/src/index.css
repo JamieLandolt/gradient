@@ -1,0 +1,106 @@
+:root {
+  --brand: #51247a; /* UQ purple */
+  --brand-light: #962a8b;
+  --ok: #2e7d32;
+  --warn: #b26a00;
+  --danger: #c62828;
+  --surface: #ffffff;
+  --background: #f5f4f7;
+  --text: #1f1f24;
+  --muted: #5f5f6b;
+  --border: #dcdae3;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  color: var(--text);
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--background); }
+
+.app-shell { min-height: 100vh; display: flex; flex-direction: column; }
+
+.app-header {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 0.75rem 1.25rem;
+  background: var(--brand);
+  color: white;
+  flex-wrap: wrap;
+}
+.app-header .brand {
+  color: white;
+  font-weight: 700;
+  font-size: 1.3rem;
+  text-decoration: none;
+}
+.app-header nav { display: flex; gap: 1rem; flex-wrap: wrap; align-items: center; }
+.app-header nav a { color: #e7defc; text-decoration: none; }
+.app-header nav a.active { color: white; font-weight: 600; text-decoration: underline; }
+.link-button {
+  background: none;
+  border: none;
+  color: #e7defc;
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 0;
+}
+
+.disclaimer {
+  margin: 0;
+  padding: 0.5rem 1.25rem;
+  background: #fdf3d7;
+  color: #6b5310;
+  font-size: 0.85rem;
+  border-bottom: 1px solid #ecd9a0;
+}
+
+.app-content { padding: 1.5rem; max-width: 960px; width: 100%; margin: 0 auto; }
+
+h1 { color: var(--brand); }
+
+.stacked-form { display: flex; flex-direction: column; gap: 0.75rem; max-width: 22rem; }
+.stacked-form label { display: flex; flex-direction: column; gap: 0.25rem; font-weight: 500; }
+input, select {
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 1rem;
+  background: var(--surface);
+}
+button {
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 6px;
+  background: var(--brand);
+  color: white;
+  font-size: 1rem;
+  cursor: pointer;
+}
+button:disabled { opacity: 0.6; cursor: wait; }
+button[type='button'] { background: var(--surface); color: var(--brand); border: 1px solid var(--brand); }
+
+.form-error { color: var(--danger); font-weight: 500; }
+.page-status { color: var(--muted); }
+
+.calculator-table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+.calculator-table th, .calculator-table td {
+  text-align: left;
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+.calculator-table input { width: 100%; }
+.calculator-actions { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
+
+.result-card {
+  margin-top: 1.25rem;
+  padding: 1rem 1.25rem;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 6px solid var(--muted);
+}
+.result-card.status-reachable { border-left-color: var(--ok); }
+.result-card.status-already_secured { border-left-color: var(--ok); }
+.result-card.status-not_reachable { border-left-color: var(--danger); }
+.result-card.status-locked { border-left-color: var(--muted); }
+.hurdle-warning { color: var(--warn); font-weight: 600; }
