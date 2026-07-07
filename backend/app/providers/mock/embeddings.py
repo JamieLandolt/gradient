@@ -24,6 +24,17 @@ def _token_bucket_and_sign(token: str) -> tuple[int, float]:
     return bucket, sign
 
 
+class MockEmbeddingProvider:
+    """Provider-interface wrapper around embed_text."""
+
+    @property
+    def model_name(self) -> str:
+        return MOCK_EMBEDDING_MODEL
+
+    def embed(self, text: str) -> list[float]:
+        return embed_text(text)
+
+
 def embed_text(text: str) -> list[float]:
     """Embed text into a deterministic, L2-normalised 384-dim vector."""
     vector = [0.0] * EMBEDDING_DIMENSIONS

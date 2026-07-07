@@ -79,6 +79,28 @@ class ProfileUpdateRequest(BaseModel):
     display_name: str = Field(min_length=1, max_length=100)
 
 
+class IngestionSubmitRequest(BaseModel):
+    source_type: Literal["text", "url", "upload"] = "text"
+    payload: str = Field(min_length=1, max_length=100_000)
+    source_ref: str = Field(default="", max_length=500)
+
+
+class RecommendRequest(BaseModel):
+    interests: list[str] = Field(default_factory=list, max_length=20)
+    limit: int = Field(default=5, ge=1, le=20)
+
+
+class StudyPlanGenerateRequest(BaseModel):
+    enrolment_id: int
+    target_grade: int = Field(default=4, ge=1, le=7)
+    start_date: date | None = None
+
+
+class AssistantAskRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=2000)
+    enrolment_id: int | None = None
+
+
 # ── Responses (subset — routers return dicts shaped like these) ─────────────
 class AssessmentItemResponse(BaseModel):
     id: int

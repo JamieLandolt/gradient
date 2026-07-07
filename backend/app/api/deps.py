@@ -6,9 +6,15 @@ Tests override these provider functions with fakes via app.dependency_overrides.
 from fastapi import Depends, Request
 
 from app.config import Settings
+from app.core.auth import AuthUser, get_current_user
 from app.core.db import get_supabase_client
+from app.core.errors import ForbiddenError
+from app.providers.factory import ProviderBundle, get_providers
 from app.repositories.catalogue import CatalogueRepository
+from app.repositories.ingestion import IngestionRepository
 from app.repositories.students import StudentRepository
+from app.services.advisory import AdvisoryService
+from app.services.ingestion import IngestionService
 from app.services.planner import PlannerService
 from app.services.tracking import TrackingService
 
@@ -37,3 +43,39 @@ def get_planner_service(
     students: StudentRepository = Depends(get_student_repo),
 ) -> PlannerService:
     return PlannerService(catalogue, students)
+
+
+def get_ingestion_repo(settings: Settings = Depends(get_settings_dep)) -> IngestionRepository:
+    return IngestionRepository(get_supabase_client(settings))
+
+
+def get_providers_dep(settings: Settings = Depends(get_settings_dep)) -> ProviderBundle:
+    return get_providers(settings)
+
+
+def get_ingestion_service(
+    repo: IngestionRepository = Depends(get_ingestion_repo),
+    providers: ProviderBundle = Depends(get_providers_dep),
+) -> IngestionService:
+    return IngestionService(repo, providers)
+
+
+def get_advisory_service(
+    catalogue: CatalogueRepository = Depends(get_catalogue_repo),
+    students: StudentRepository = Depends(get_student_repo),
+    ingestion: IngestionRepository = Depends(get_ingestion_repo),
+    tracking: TrackingService = Depends(get_tracking_service),
+    providers: ProviderBundle = Depends(get_providers_dep),
+) -> AdvisoryService:
+    return AdvisoryService(catalogue, students, ingestion, tracking, providers)
+
+
+def get_current_curator(
+    user: AuthUser = Depends(get_current_user),
+    students: StudentRepository = Depends(get_student_repo),
+) -> AuthUser:
+    """Curator/admin gate for ECP review endpoints (FR-3.5.3)."""
+    profile = students.get_profile(user.id)
+    if profile is None or profile.get("role") not in ("curator", "admin"):
+        raise ForbiddenError("Curator access required")
+    return user

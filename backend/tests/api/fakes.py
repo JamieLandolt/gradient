@@ -9,6 +9,9 @@ from app.config import Settings
 from app.core.auth import AuthUser, get_current_user
 from app.domain.planning.models import PlannableCourse, PrereqNode
 from app.main import create_app
+from app.providers.factory import get_providers
+from app.services.advisory import AdvisoryService
+from app.services.ingestion import IngestionService
 from app.services.planner import PlannerService
 from app.services.tracking import TrackingService
 
@@ -277,21 +280,149 @@ class FakeStudentRepository:
         self.deleted_accounts.append(user_id)
 
 
+class FakeIngestionRepository:
+    """In-memory mirror of IngestionRepository, sharing the fake catalogue."""
+
+    def __init__(self, catalogue: FakeCatalogueRepository):
+        self._catalogue = catalogue
+        self.jobs: list[dict[str, Any]] = []
+        self.versions: list[dict[str, Any]] = []
+        self.embeddings: dict[int, list[float]] = {}
+        self.prereq_raw: dict[int, str] = {}
+        self._next_id = 1000
+
+    def _new_id(self) -> int:
+        self._next_id += 1
+        return self._next_id
+
+    def create_course_if_missing(self, extracted):
+        existing = self._catalogue.courses.get(extracted.course_code)
+        if existing:
+            return dict(existing)
+        course = {
+            "id": self._new_id(), "code": extracted.course_code,
+            "title": extracted.course_title, "units": extracted.units,
+            "description": extracted.description,
+        }
+        self._catalogue.courses[extracted.course_code] = course
+        return dict(course)
+
+    def find_profile_version(self, course_id, version_label):
+        for v in self.versions:
+            if v["course_id"] == course_id and v["version_label"] == version_label:
+                return dict(v)
+        return None
+
+    def create_draft_version(self, course_id, extracted, source_type, source_ref,
+                             provider_name):
+        version = {
+            "id": self._new_id(), "course_id": course_id,
+            "version_label": extracted.version_label, "status": "draft",
+            "source_type": source_type, "source_ref": source_ref,
+            "extraction_provider": provider_name,
+            "assessments": [
+                {"id": self._new_id(), "name": a.name, "weight": a.weight,
+                 "max_mark": a.max_mark, "due_date": a.due_date,
+                 "hurdle_min_percent": a.hurdle_min_percent,
+                 "hurdle_description": a.hurdle_description, "sort_order": i}
+                for i, a in enumerate(extracted.assessments)
+            ],
+            "grade_cutoffs": extracted.grade_cutoffs,
+        }
+        self.versions.append(version)
+        return dict(version)
+
+    def get_version(self, version_id):
+        for v in self.versions:
+            if v["id"] == version_id:
+                return dict(v)
+        return None
+
+    def list_versions(self, status):
+        return [dict(v) for v in self.versions if v["status"] == status]
+
+    def set_version_status(self, version_id, status, verified_by):
+        for v in self.versions:
+            if v["id"] == version_id:
+                v["status"] = status
+                v["verified_by"] = verified_by
+                if status == "verified":
+                    # Also expose to the catalogue fake so projections use it.
+                    self._catalogue.profiles[v["course_id"]] = dict(v)
+                return dict(v)
+        return None
+
+    def replace_prereq_tree(self, course_id, raw_text, tree):
+        self.prereq_raw[course_id] = raw_text
+        if tree is not None:
+            self._catalogue.prereq_trees[course_id] = tree
+            self._catalogue.raw_prereqs[course_id] = raw_text
+
+    def create_job(self, user_id, values):
+        job = {**values, "id": self._new_id(), "submitted_by": user_id,
+               "profile_version_id": None, "error": ""}
+        self.jobs.append(job)
+        return dict(job)
+
+    def update_job(self, job_id, values):
+        for job in self.jobs:
+            if job["id"] == job_id:
+                job.update(values)
+                return dict(job)
+        return None
+
+    def get_job(self, user_id, job_id):
+        for job in self.jobs:
+            if job["id"] == job_id and job["submitted_by"] == user_id:
+                return dict(job)
+        return None
+
+    def upsert_embedding(self, course_id, embedding, model):
+        self.embeddings[course_id] = embedding
+
+    def match_courses(self, embedding, limit):
+        def cosine(a, b):
+            return sum(x * y for x, y in zip(a, b, strict=True))
+
+        scored = []
+        for course in self._catalogue.courses.values():
+            stored = self.embeddings.get(course["id"])
+            if stored is None:
+                continue
+            scored.append(
+                {"course_id": course["id"], "code": course["code"],
+                 "title": course["title"], "description": course["description"],
+                 "similarity": cosine(embedding, stored)}
+            )
+        scored.sort(key=lambda row: -row["similarity"])
+        return scored[:limit]
+
+
 def build_client(
     catalogue: FakeCatalogueRepository | None = None,
     students: FakeStudentRepository | None = None,
     user: AuthUser | None = None,
+    ingestion: FakeIngestionRepository | None = None,
 ) -> tuple[TestClient, FakeCatalogueRepository, FakeStudentRepository]:
     catalogue = catalogue or FakeCatalogueRepository()
     students = students or FakeStudentRepository(catalogue)
-    app = create_app(Settings(_env_file=None))
+    ingestion = ingestion or FakeIngestionRepository(catalogue)
+    settings = Settings(_env_file=None)
+    providers = get_providers(settings)
+    tracking = TrackingService(catalogue, students)
+    app = create_app(settings)
     app.dependency_overrides[deps.get_catalogue_repo] = lambda: catalogue
     app.dependency_overrides[deps.get_student_repo] = lambda: students
-    app.dependency_overrides[deps.get_tracking_service] = lambda: TrackingService(
-        catalogue, students
-    )
+    app.dependency_overrides[deps.get_tracking_service] = lambda: tracking
     app.dependency_overrides[deps.get_planner_service] = lambda: PlannerService(
         catalogue, students
+    )
+    app.dependency_overrides[deps.get_ingestion_repo] = lambda: ingestion
+    app.dependency_overrides[deps.get_ingestion_service] = lambda: IngestionService(
+        ingestion, providers
+    )
+    app.dependency_overrides[deps.get_advisory_service] = lambda: AdvisoryService(
+        catalogue, students, ingestion, tracking, providers
     )
     if user is not None:
         app.dependency_overrides[get_current_user] = lambda: user
