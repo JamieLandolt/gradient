@@ -104,3 +104,57 @@ button[type='button'] { background: var(--surface); color: var(--brand); border:
 .result-card.status-not_reachable { border-left-color: var(--danger); }
 .result-card.status-locked { border-left-color: var(--muted); }
 .hurdle-warning { color: var(--warn); font-weight: 600; }
+
+.page-heading { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 1rem; }
+.gpa-summary { font-size: 1.05rem; }
+
+.inline-form { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; margin: 1rem 0; }
+
+.card-list { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 1rem; }
+.course-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.9rem 1.1rem;
+}
+.course-card h2, .course-card h3 { margin: 0 0 0.3rem; font-size: 1.1rem; }
+.course-card p { margin: 0.2rem 0; }
+
+.grade-badge { padding: 0.15rem 0.55rem; border-radius: 999px; font-size: 0.85rem; font-weight: 600; color: white; }
+.grade-ok { background: var(--ok); }
+.grade-warn { background: var(--warn); }
+.grade-danger { background: var(--danger); }
+
+.prereq-badge { font-weight: 600; }
+.prereq-met { color: var(--ok); }
+.prereq-partially_met { color: var(--warn); }
+.prereq-not_met { color: var(--danger); }
+
+.hurdle-tag {
+  margin-left: 0.5rem;
+  font-size: 0.75rem;
+  background: #fdf3d7;
+  color: #6b5310;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+}
+
+.semester-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 1rem; margin-top: 1rem; }
+.semester-column { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 0.75rem 1rem; }
+.semester-column h3 { margin-top: 0; }
+
+.session-list { list-style: none; padding: 0; }
+.session-list li { padding: 0.4rem 0; border-bottom: 1px solid var(--border); }
+
+textarea {
+  width: 100%;
+  padding: 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: ui-monospace, monospace;
+  font-size: 0.9rem;
+  margin-bottom: 0.75rem;
+}
+
+.standing-summary { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 0.75rem 1.1rem; }
+.target-calculator { margin-top: 1.5rem; }
