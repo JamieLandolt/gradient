@@ -187,15 +187,13 @@ The system uses a layered, service-oriented design. The guiding principle is a s
 
 #### 2.4.1. Class Diagram
 
-The detailed class diagram is maintained in a separate design file alongside this document, covering the entities listed above and their relationships.
+![1783476037221](image/Gradient_SRS_Master/1783476037221.png)
 
-#### 2.4.2. Entity Relationship Diagram (ERD)
+2.4.2. Entity Relationship Diagram (ERD)
 
-The detailed ERD is maintained in a separate design file alongside this document, showing how User, Program, Course, CoursePrerequisite, Assessment, Enrolment, and Grade records relate to one another.
+![1783476055636](image/Gradient_SRS_Master/1783476055636.png)
 
----
-
-## 3. System Features
+3. System Features
 
 ### 3.1. User Authentication & Account Management
 
