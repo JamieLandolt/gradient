@@ -37,3 +37,6 @@ Gradient_SRS_Master.pdf
 
 # Claude Code local settings
 .claude/
+
+# Cached UQ course HTML (fetched by scripts/import_uq_catalogue.py)
+seed/data/uq_html_cache/

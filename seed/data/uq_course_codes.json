@@ -1,0 +1,21 @@
+{
+  "comment": "Curated real UQ course codes across Computer Science, Mathematics, Information Technology, and Engineering. The importer (scripts/import_uq_catalogue.py) fetches each course's public page from programs-courses.uq.edu.au, LLM-extracts it, and stores a DRAFT profile_version for curator review. Unknown/renamed codes are skipped gracefully, so the list can be edited freely.",
+  "subjects": {
+    "computer_science": [
+      "CSSE1001", "CSSE2002", "CSSE2010", "CSSE2310", "CSSE3010",
+      "COMP3506", "COMP3400", "COMP3702", "COMP4500", "COMP4702",
+      "COMS3200", "DECO1400", "DECO2500", "DECO2800"
+    ],
+    "mathematics": [
+      "MATH1051", "MATH1052", "MATH1061", "MATH1071",
+      "MATH2000", "MATH2400", "STAT1201", "STAT2003"
+    ],
+    "information_technology": [
+      "INFS1200", "INFS2200", "INFS3200", "INFS3202"
+    ],
+    "engineering": [
+      "ENGG1100", "ENGG1200", "ENGG1300", "ENGG2800",
+      "ELEC2004", "MECH2100", "CIVL2210", "CHEE2001"
+    ]
+  }
+}

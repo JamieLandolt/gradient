@@ -139,9 +139,11 @@ _EXTRACTION_SYSTEM = (
 
 
 class _AssessmentReply(BaseModel):
-    name: str
-    weight: float
-    max_mark: float = 100.0
+    # Lenient: catalogue pages list "assessment methods" without weights, and the
+    # model may return partial/null fields. Weightless items are dropped in extract().
+    name: str | None = None
+    weight: float | None = None
+    max_mark: float | None = None
     due_date: str | None = None
     hurdle_min_percent: float | None = None
     hurdle_description: str | None = None
@@ -153,7 +155,8 @@ class _ExtractionReply(BaseModel):
     units: float = 2.0
     description: str = ""
     version_label: str = "unknown"
-    assessments: list[_AssessmentReply] = []
+    # Catalogue pages have no assessment section, so the model may return null.
+    assessments: list[_AssessmentReply] | None = None
     grade_cutoffs: dict[int, float] | None = None
     prerequisite: str | None = None
 
@@ -178,12 +181,14 @@ class OpenAICompatibleExtractionProvider:
             ExtractedAssessment(
                 name=item.name,
                 weight=item.weight,
-                max_mark=item.max_mark,
+                max_mark=item.max_mark or 100.0,
                 due_date=item.due_date,
                 hurdle_min_percent=item.hurdle_min_percent,
                 hurdle_description=item.hurdle_description,
             )
-            for item in parsed.assessments
+            # Keep only genuine weighted items; drop catalogue method-list noise.
+            for item in (parsed.assessments or [])
+            if item.name and item.weight is not None
         )
         if not assessments:
             warnings.append("No assessment items were recognised")
