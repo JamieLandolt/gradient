@@ -19,8 +19,12 @@ import re
 
 from app.domain.planning.models import PrereqNode
 from app.providers.interfaces import ExtractedAssessment, ExtractedProfile
+from app.providers.prereq_parser import (
+    COURSE_CODE_PATTERN,
+    PrereqParseError,
+    parse_prereq_expression,
+)
 
-COURSE_CODE_PATTERN = re.compile(r"^[A-Z]{4}\d{4}[A-Z]?$")
 ASSESSMENT_LINE = re.compile(
     r"^-\s*(?P<name>[^|]+?)\s*\|\s*weight:\s*(?P<weight>[\d.]+)%"
     r"(?:\s*\|\s*max mark:\s*(?P<max_mark>[\d.]+))?"
@@ -28,64 +32,6 @@ ASSESSMENT_LINE = re.compile(
 )
 HURDLE_MIN = re.compile(r"at least\s+([\d.]+)%", re.IGNORECASE)
 SEMESTER_LINE = re.compile(r"Semester\s+(\d),\s*(\d{4})", re.IGNORECASE)
-
-
-class PrereqParseError(ValueError):
-    pass
-
-
-def _tokenise_prereq(text: str) -> list[str]:
-    return re.findall(r"\(|\)|[A-Za-z]{4}\d{4}[A-Za-z]?|\band\b|\bor\b|[^\s()]+", text)
-
-
-def parse_prereq_expression(text: str) -> PrereqNode:
-    """Recursive-descent parse of 'A and (B or C)'; unparseable → error."""
-    tokens = _tokenise_prereq(text)
-    position = 0
-
-    def peek() -> str | None:
-        return tokens[position] if position < len(tokens) else None
-
-    def advance() -> str:
-        nonlocal position
-        token = tokens[position]
-        position += 1
-        return token
-
-    def parse_atom() -> PrereqNode:
-        token = peek()
-        if token is None:
-            raise PrereqParseError("unexpected end of expression")
-        if token == "(":
-            advance()
-            node = parse_or()
-            if peek() != ")":
-                raise PrereqParseError("missing closing parenthesis")
-            advance()
-            return node
-        if COURSE_CODE_PATTERN.match(token.upper()):
-            advance()
-            return PrereqNode.course(token.upper())
-        raise PrereqParseError(f"unrecognised token: {token}")
-
-    def parse_and() -> PrereqNode:
-        operands = [parse_atom()]
-        while peek() is not None and peek().lower() == "and":
-            advance()
-            operands.append(parse_atom())
-        return operands[0] if len(operands) == 1 else PrereqNode.all_of(*operands)
-
-    def parse_or() -> PrereqNode:
-        operands = [parse_and()]
-        while peek() is not None and peek().lower() == "or":
-            advance()
-            operands.append(parse_and())
-        return operands[0] if len(operands) == 1 else PrereqNode.any_of(*operands)
-
-    node = parse_or()
-    if position != len(tokens):
-        raise PrereqParseError("trailing tokens in expression")
-    return node
 
 
 def _field(text: str, label: str) -> str | None:

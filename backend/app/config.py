@@ -26,9 +26,21 @@ class Settings(BaseSettings):
     # Only needed for legacy HS256 projects; new projects verify via JWKS.
     supabase_jwt_secret: str = Field(default="", alias="SUPABASE_JWT_SECRET")
 
-    ai_provider: Literal["mock", "ollama", "anthropic"] = Field(
+    ai_provider: Literal["mock", "openai_compatible", "ollama", "anthropic"] = Field(
         default="mock", alias="AI_PROVIDER"
     )
+    # Hosted OpenAI-compatible LLM — Alibaba Bailian (Qwen) by default. Only the
+    # base URL + model names differ to point at DeepSeek or a self-hosted vLLM.
+    dashscope_api_key: str = Field(default="", alias="DASHSCOPE_API_KEY")
+    ai_base_url: str = Field(
+        default="https://dashscope.aliyuncs.com/compatible-mode/v1", alias="AI_BASE_URL"
+    )
+    ai_chat_model: str = Field(default="qwen-plus", alias="AI_CHAT_MODEL")
+    ai_embedding_model: str = Field(default="text-embedding-v3", alias="AI_EMBEDDING_MODEL")
+    embedding_dim: int = Field(default=1024, alias="EMBEDDING_DIM")
+    ai_request_timeout_s: float = Field(default=30.0, alias="AI_REQUEST_TIMEOUT_S")
+    ai_max_retries: int = Field(default=1, alias="AI_MAX_RETRIES")
+
     cors_origins: str = Field(default="http://localhost:5173", alias="CORS_ORIGINS")
 
     @model_validator(mode="after")
@@ -47,6 +59,14 @@ class Settings(BaseSettings):
         if missing:
             raise ValueError(
                 f"APP_MODE=supabase requires {', '.join(missing)} — see .env.example"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def require_ai_key_for_hosted_provider(self) -> "Settings":
+        if self.ai_provider == "openai_compatible" and not self.dashscope_api_key.strip():
+            raise ValueError(
+                "AI_PROVIDER=openai_compatible requires DASHSCOPE_API_KEY — see .env.example"
             )
         return self
 

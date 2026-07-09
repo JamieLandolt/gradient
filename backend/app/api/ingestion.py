@@ -12,7 +12,7 @@ router = APIRouter(tags=["ingestion"])
 
 
 @router.post("/ingestion/jobs", status_code=201)
-async def submit_job(
+def submit_job(
     request: IngestionSubmitRequest,
     user: AuthUser = Depends(get_current_user),
     ingestion: IngestionService = Depends(get_ingestion_service),

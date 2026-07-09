@@ -12,7 +12,7 @@ router = APIRouter(tags=["advisory"])
 
 
 @router.post("/recommendations/generate")
-async def generate_recommendations(
+def generate_recommendations(
     request: RecommendRequest,
     user: AuthUser = Depends(get_current_user),
     advisory: AdvisoryService = Depends(get_advisory_service),
@@ -21,7 +21,7 @@ async def generate_recommendations(
 
 
 @router.post("/study-plans/generate")
-async def generate_study_plan(
+def generate_study_plan(
     request: StudyPlanGenerateRequest,
     user: AuthUser = Depends(get_current_user),
     advisory: AdvisoryService = Depends(get_advisory_service),
@@ -37,7 +37,7 @@ async def generate_study_plan(
 
 
 @router.get("/search/courses")
-async def search_courses(
+def search_courses(
     q: str = Query(min_length=1, max_length=200),
     limit: int = Query(default=10, ge=1, le=50),
     advisory: AdvisoryService = Depends(get_advisory_service),
@@ -47,7 +47,7 @@ async def search_courses(
 
 
 @router.post("/assistant/ask")
-async def ask_assistant(
+def ask_assistant(
     request: AssistantAskRequest,
     user: AuthUser = Depends(get_current_user),
     advisory: AdvisoryService = Depends(get_advisory_service),
