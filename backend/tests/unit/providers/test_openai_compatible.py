@@ -208,3 +208,45 @@ def test_client_embed_returns_vector():
         return httpx.Response(200, json={"data": [{"embedding": [0.1, 0.2]}]})
 
     assert _client_with(handler).embed("x") == [0.1, 0.2]
+
+
+# ── Streaming assistant (SSE) ────────────────────────────────────────────────
+def test_client_chat_text_stream_parses_sse_tokens():
+    sse = (
+        'data: {"choices":[{"delta":{"content":"You "}}]}\n\n'
+        'data: {"choices":[{"delta":{"content":"need "}}]}\n\n'
+        ': keep-alive comment line\n\n'
+        'data: {"choices":[{"delta":{"content":"74%."}}]}\n\n'
+        "data: [DONE]\n\n"
+    )
+
+    def handler(_request):
+        return httpx.Response(200, content=sse.encode())
+
+    tokens = list(_client_with(handler).chat_text_stream("s", "u"))
+
+    assert "".join(tokens) == "You need 74%."
+
+
+def test_client_chat_text_stream_raises_on_http_error():
+    def handler(_request):
+        return httpx.Response(500)
+
+    with pytest.raises(AIProviderError):
+        list(_client_with(handler).chat_text_stream("s", "u"))
+
+
+def test_assistant_stream_answer_uses_grounded_facts():
+    captured = {}
+
+    class StreamingFakeClient:
+        def chat_text_stream(self, system, user):
+            captured["user"] = user
+            return iter(["You ", "need ", "74%."])
+
+    provider = OpenAICompatibleAssistantProvider(StreamingFakeClient())
+
+    tokens = list(provider.stream_answer("What do I need?", {"GPA": 6.0}))
+
+    assert "".join(tokens) == "You need 74%."
+    assert "GPA: 6.0" in captured["user"]

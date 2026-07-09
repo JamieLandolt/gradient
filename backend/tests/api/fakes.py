@@ -398,31 +398,200 @@ class FakeIngestionRepository:
         return scored[:limit]
 
 
+class FakeArtifactRepository:
+    """In-memory mirror of ArtifactRepository, returning the same nested shapes."""
+
+    def __init__(self, catalogue: FakeCatalogueRepository, students: FakeStudentRepository):
+        self._catalogue = catalogue
+        self._students = students
+        self.recommendations: list[dict[str, Any]] = []
+        self.study_plans: list[dict[str, Any]] = []
+        self.degree_plans: list[dict[str, Any]] = []
+        self._next_id = 5000
+        self._seq = 0
+
+    def _new_id(self) -> int:
+        self._next_id += 1
+        return self._next_id
+
+    def _stamp(self) -> str:
+        self._seq += 1
+        return f"2026-01-01T00:00:{self._seq:02d}Z"
+
+    def _course_by_id(self) -> dict[int, dict[str, Any]]:
+        return {c["id"]: c for c in self._catalogue.courses.values()}
+
+    # ── Recommendations ───────────────────────────────────────────────────
+    def save_recommendation(self, user_id, provider, items):
+        record = {
+            "id": self._new_id(), "user_id": user_id, "provider": provider,
+            "generated_at": self._stamp(), "items": [dict(i) for i in items],
+        }
+        self.recommendations.append(record)
+        return {"id": record["id"], "user_id": user_id, "provider": provider,
+                "generated_at": record["generated_at"]}
+
+    def _rec_nested(self, record):
+        by_id = self._course_by_id()
+        return {
+            "id": record["id"], "provider": record["provider"],
+            "generated_at": record["generated_at"],
+            "recommendation_items": [
+                {
+                    "course_id": i["course_id"], "rank": i["rank"], "reason": i["reason"],
+                    "prereq_status": i["prereq_status"],
+                    "courses": {"code": by_id.get(i["course_id"], {}).get("code"),
+                                "title": by_id.get(i["course_id"], {}).get("title")},
+                }
+                for i in record["items"]
+            ],
+        }
+
+    def latest_recommendation(self, user_id):
+        mine = [r for r in self.recommendations if r["user_id"] == user_id]
+        return self._rec_nested(mine[-1]) if mine else None
+
+    def list_recommendations(self, user_id):
+        mine = [r for r in self.recommendations if r["user_id"] == user_id]
+        return [
+            {"id": r["id"], "provider": r["provider"], "generated_at": r["generated_at"],
+             "recommendation_items": [{"course_id": i["course_id"]} for i in r["items"]]}
+            for r in reversed(mine)
+        ]
+
+    def delete_recommendation(self, user_id, recommendation_id):
+        before = len(self.recommendations)
+        self.recommendations = [
+            r for r in self.recommendations
+            if not (r["user_id"] == user_id and r["id"] == recommendation_id)
+        ]
+        return len(self.recommendations) < before
+
+    # ── Study plans ───────────────────────────────────────────────────────
+    def save_study_plan(self, user_id, enrolment_id, target_grade, provider, sessions):
+        enrolments = None
+        enrolment = self._students.get_enrolment(user_id, enrolment_id) if enrolment_id else None
+        if enrolment:
+            enrolments = {
+                "course_offerings": {"courses": dict(enrolment["course_offerings"]["courses"])}
+            }
+        record = {
+            "id": self._new_id(), "user_id": user_id, "enrolment_id": enrolment_id,
+            "target_grade": target_grade, "provider": provider,
+            "generated_at": self._stamp(), "_enrolments": enrolments,
+            "sessions": [
+                {"assessment_id": None, "custom_assessment_id": None,
+                 "session_date": s["session_date"], "duration_minutes": s["duration_minutes"],
+                 "focus": s["focus"], "sort_order": s.get("sort_order", i)}
+                for i, s in enumerate(sessions)
+            ],
+        }
+        self.study_plans.append(record)
+        return {"id": record["id"], "generated_at": record["generated_at"]}
+
+    def list_study_plans(self, user_id):
+        mine = [p for p in self.study_plans if p["user_id"] == user_id]
+        return [
+            {"id": p["id"], "enrolment_id": p["enrolment_id"], "target_grade": p["target_grade"],
+             "provider": p["provider"], "generated_at": p["generated_at"],
+             "enrolments": p["_enrolments"]}
+            for p in reversed(mine)
+        ]
+
+    def get_study_plan(self, user_id, plan_id):
+        for p in self.study_plans:
+            if p["user_id"] == user_id and p["id"] == plan_id:
+                return {
+                    "id": p["id"], "enrolment_id": p["enrolment_id"],
+                    "target_grade": p["target_grade"], "provider": p["provider"],
+                    "generated_at": p["generated_at"], "enrolments": p["_enrolments"],
+                    "study_sessions": [dict(s) for s in p["sessions"]],
+                }
+        return None
+
+    def delete_study_plan(self, user_id, plan_id):
+        before = len(self.study_plans)
+        self.study_plans = [
+            p for p in self.study_plans
+            if not (p["user_id"] == user_id and p["id"] == plan_id)
+        ]
+        return len(self.study_plans) < before
+
+    # ── Degree plans ──────────────────────────────────────────────────────
+    def save_degree_plan(self, user_id, name, feasible, entries, diagnostics):
+        record = {
+            "id": self._new_id(), "user_id": user_id, "name": name, "feasible": feasible,
+            "generated_at": self._stamp(), "entries": [dict(e) for e in entries],
+            "diagnostics": [dict(d) for d in diagnostics],
+        }
+        self.degree_plans.append(record)
+        return {"id": record["id"], "name": name, "feasible": feasible,
+                "generated_at": record["generated_at"]}
+
+    def list_degree_plans(self, user_id):
+        mine = [p for p in self.degree_plans if p["user_id"] == user_id]
+        return [
+            {"id": p["id"], "name": p["name"], "feasible": p["feasible"],
+             "generated_at": p["generated_at"]}
+            for p in reversed(mine)
+        ]
+
+    def get_degree_plan(self, user_id, plan_id):
+        by_id = self._course_by_id()
+        for p in self.degree_plans:
+            if p["user_id"] == user_id and p["id"] == plan_id:
+                return {
+                    "id": p["id"], "name": p["name"], "feasible": p["feasible"],
+                    "generated_at": p["generated_at"],
+                    "degree_plan_entries": [
+                        {"semester_index": e["semester_index"],
+                         "semester_label": e["semester_label"],
+                         "explanation": e.get("explanation", ""),
+                         "courses": {"code": by_id.get(e["course_id"], {}).get("code"),
+                                     "units": by_id.get(e["course_id"], {}).get("units")}}
+                        for e in p["entries"]
+                    ],
+                    "degree_plan_diagnostics": [dict(d) for d in p["diagnostics"]],
+                }
+        return None
+
+    def delete_degree_plan(self, user_id, plan_id):
+        before = len(self.degree_plans)
+        self.degree_plans = [
+            p for p in self.degree_plans
+            if not (p["user_id"] == user_id and p["id"] == plan_id)
+        ]
+        return len(self.degree_plans) < before
+
+
 def build_client(
     catalogue: FakeCatalogueRepository | None = None,
     students: FakeStudentRepository | None = None,
     user: AuthUser | None = None,
     ingestion: FakeIngestionRepository | None = None,
+    artifacts: FakeArtifactRepository | None = None,
 ) -> tuple[TestClient, FakeCatalogueRepository, FakeStudentRepository]:
     catalogue = catalogue or FakeCatalogueRepository()
     students = students or FakeStudentRepository(catalogue)
     ingestion = ingestion or FakeIngestionRepository(catalogue)
+    artifacts = artifacts or FakeArtifactRepository(catalogue, students)
     settings = Settings(_env_file=None)
     providers = get_providers(settings)
     tracking = TrackingService(catalogue, students)
     app = create_app(settings)
     app.dependency_overrides[deps.get_catalogue_repo] = lambda: catalogue
     app.dependency_overrides[deps.get_student_repo] = lambda: students
+    app.dependency_overrides[deps.get_artifact_repo] = lambda: artifacts
     app.dependency_overrides[deps.get_tracking_service] = lambda: tracking
     app.dependency_overrides[deps.get_planner_service] = lambda: PlannerService(
-        catalogue, students
+        catalogue, students, artifacts
     )
     app.dependency_overrides[deps.get_ingestion_repo] = lambda: ingestion
     app.dependency_overrides[deps.get_ingestion_service] = lambda: IngestionService(
         ingestion, providers
     )
     app.dependency_overrides[deps.get_advisory_service] = lambda: AdvisoryService(
-        catalogue, students, ingestion, tracking, providers
+        catalogue, students, ingestion, tracking, providers, artifacts
     )
     if user is not None:
         app.dependency_overrides[get_current_user] = lambda: user

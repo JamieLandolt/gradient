@@ -5,6 +5,7 @@ extraction, embeddings, and advisory generation. v1 ships mock implementations;
 real providers (ollama / anthropic) plug in behind the same contracts.
 """
 
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -69,3 +70,7 @@ class StudyPlanProvider(Protocol):
 
 class AssistantProvider(Protocol):
     def answer(self, question: str, facts: dict[str, Any]) -> str: ...
+
+    def stream_answer(self, question: str, facts: dict[str, Any]) -> Iterator[str]:
+        """Yield the answer in chunks; the concatenation equals `answer(...)`."""
+        ...

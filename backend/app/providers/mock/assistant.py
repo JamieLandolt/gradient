@@ -4,7 +4,12 @@ Answers from the facts dict supplied by the deterministic engines; it never
 invents figures. A real LLM provider would receive the same grounded facts.
 """
 
+import re
+from collections.abc import Iterator
 from typing import Any
+
+# Split into words plus their trailing whitespace so the chunks re-join exactly.
+_CHUNK = re.compile(r"\S+\s*")
 
 
 class MockAssistantProvider:
@@ -21,3 +26,7 @@ class MockAssistantProvider:
             "Your course profile (ECP) and official university records remain authoritative."
         )
         return "\n".join(lines)
+
+    def stream_answer(self, question: str, facts: dict[str, Any]) -> Iterator[str]:
+        """Chunk the deterministic answer so mock mode streams identical content."""
+        return iter(_CHUNK.findall(self.answer(question, facts)))

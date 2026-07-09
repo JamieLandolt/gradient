@@ -2,12 +2,59 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 
 import { ApiError, apiClient } from '../../lib/apiClient'
-import type { PlanSequence, PrereqStatusRow, Program, UserProgramLink } from '../../types/api'
+import type {
+  DegreePlanSummary,
+  PlanSequence,
+  PrereqStatusRow,
+  Program,
+  SavedDegreePlan,
+  UserProgramLink,
+} from '../../types/api'
 
 const PREREQ_LABELS: Record<PrereqStatusRow['prereq_status'], string> = {
   met: 'Prerequisites met',
   partially_met: 'Partially met',
   not_met: 'Not met',
+}
+
+type PlanLike = Pick<PlanSequence, 'feasible' | 'semesters' | 'diagnostics'>
+
+function PlanView({ plan }: { plan: PlanLike }) {
+  return (
+    <div aria-live="polite">
+      {!plan.feasible && (
+        <p role="alert" className="form-error">
+          This plan is not feasible — see the issues below.
+        </p>
+      )}
+      {plan.diagnostics.map((diagnostic) => (
+        <p
+          key={diagnostic.message}
+          className={diagnostic.severity === 'error' ? 'form-error' : 'hurdle-warning'}
+        >
+          {diagnostic.message}
+        </p>
+      ))}
+      <div className="semester-grid">
+        {plan.semesters.map((semester) => (
+          <div key={semester.label} className="semester-column">
+            <h3>{semester.label}</h3>
+            {semester.entries.length === 0 && <p className="page-status">—</p>}
+            <ul>
+              {semester.entries.map((entry) => (
+                <li key={entry.course_code}>
+                  {entry.course_code} ({entry.units} units)
+                  {entry.explanation && (
+                    <span className="entry-explanation">{entry.explanation}</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 function ProgramPicker() {
@@ -114,23 +161,51 @@ function PrereqStatusList() {
 }
 
 function SequencePlanner() {
+  const queryClient = useQueryClient()
   const [startYear, setStartYear] = useState(2026)
   const [startSemester, setStartSemester] = useState<'S1' | 'S2'>('S2')
+  const [prioritiseAvailable, setPrioritiseAvailable] = useState(false)
+  const [interests, setInterests] = useState('')
+  const [planName, setPlanName] = useState('My plan')
   const [plan, setPlan] = useState<PlanSequence | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [saved, setSaved] = useState(false)
+
+  function requestBody() {
+    return {
+      start_year: startYear,
+      start_semester: startSemester,
+      prioritise_available: prioritiseAvailable,
+      interests: interests
+        .split(',')
+        .map((term) => term.trim())
+        .filter(Boolean),
+    }
+  }
 
   const generate = useMutation({
-    mutationFn: () =>
-      apiClient.post<PlanSequence>('/planner/sequence', {
-        start_year: startYear,
-        start_semester: startSemester,
-      }),
+    mutationFn: () => apiClient.post<PlanSequence>('/planner/sequence', requestBody()),
     onSuccess: (data) => {
       setPlan(data)
       setError(null)
+      setSaved(false)
     },
     onError: (err) =>
       setError(err instanceof ApiError ? err.message : 'Could not build a plan'),
+  })
+
+  const savePlan = useMutation({
+    mutationFn: () =>
+      apiClient.post<SavedDegreePlan>('/planner/plans', {
+        ...requestBody(),
+        name: planName.trim() || 'My plan',
+      }),
+    onSuccess: () => {
+      setSaved(true)
+      void queryClient.invalidateQueries({ queryKey: ['saved-plans'] })
+    },
+    onError: (err) =>
+      setError(err instanceof ApiError ? err.message : 'Could not save the plan'),
   })
 
   return (
@@ -160,37 +235,109 @@ function SequencePlanner() {
           {generate.isPending ? 'Planning…' : 'Generate plan'}
         </button>
       </div>
+
+      <div className="pref-row">
+        <label>
+          <input
+            type="checkbox"
+            checked={prioritiseAvailable}
+            onChange={(e) => setPrioritiseAvailable(e.target.checked)}
+          />{' '}
+          Prioritise courses I can take now
+        </label>
+        <input
+          aria-label="Topic interests"
+          placeholder="Interests, e.g. algorithms, security"
+          value={interests}
+          onChange={(e) => setInterests(e.target.value)}
+        />
+      </div>
+
       {error && <p role="alert" className="form-error">{error}</p>}
+
       {plan && (
-        <div aria-live="polite">
-          {!plan.feasible && (
-            <p role="alert" className="form-error">
-              This plan is not feasible — see the issues below.
-            </p>
-          )}
-          {plan.diagnostics.map((diagnostic) => (
-            <p
-              key={diagnostic.message}
-              className={diagnostic.severity === 'error' ? 'form-error' : 'hurdle-warning'}
-            >
-              {diagnostic.message}
-            </p>
-          ))}
-          <div className="semester-grid">
-            {plan.semesters.map((semester) => (
-              <div key={semester.label} className="semester-column">
-                <h3>{semester.label}</h3>
-                {semester.entries.length === 0 && <p className="page-status">—</p>}
-                <ul>
-                  {semester.entries.map((entry) => (
-                    <li key={entry.course_code} title={entry.explanation}>
-                      {entry.course_code} ({entry.units} units)
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
+        <>
+          <PlanView plan={plan} />
+          <div className="pref-row">
+            <input
+              aria-label="Plan name"
+              value={planName}
+              onChange={(e) => {
+                setPlanName(e.target.value)
+                setSaved(false)
+              }}
+            />
+            <button type="button" onClick={() => savePlan.mutate()} disabled={savePlan.isPending}>
+              {savePlan.isPending ? 'Saving…' : 'Save this plan'}
+            </button>
+            {saved && <span className="page-status">Saved ✓</span>}
           </div>
+        </>
+      )}
+    </section>
+  )
+}
+
+function SavedPlans() {
+  const queryClient = useQueryClient()
+  const { data: plans } = useQuery({
+    queryKey: ['saved-plans'],
+    queryFn: () => apiClient.get<DegreePlanSummary[]>('/planner/plans'),
+  })
+  const [open, setOpen] = useState<SavedDegreePlan | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const view = useMutation({
+    mutationFn: (id: number) => apiClient.get<SavedDegreePlan>(`/planner/plans/${id}`),
+    onSuccess: (data) => {
+      setOpen(data)
+      setError(null)
+    },
+    onError: (err) =>
+      setError(err instanceof ApiError ? err.message : 'Could not open that plan'),
+  })
+  const remove = useMutation({
+    mutationFn: (id: number) => apiClient.delete(`/planner/plans/${id}`),
+    onSuccess: (_data, id) => {
+      if (open?.id === id) setOpen(null)
+      void queryClient.invalidateQueries({ queryKey: ['saved-plans'] })
+    },
+    onError: (err) =>
+      setError(err instanceof ApiError ? err.message : 'Could not delete that plan'),
+  })
+
+  if (!plans || plans.length === 0) return null
+
+  return (
+    <section aria-label="Saved plans">
+      <h2>Saved plans</h2>
+      {error && <p role="alert" className="form-error">{error}</p>}
+      <ul className="card-list">
+        {plans.map((summary) => (
+          <li key={summary.id} className="course-card">
+            <div className="saved-plan-row">
+              <strong>{summary.name}</strong>
+              <span className={`prereq-badge prereq-${summary.feasible ? 'met' : 'not_met'}`}>
+                {summary.feasible ? 'Feasible' : 'Not feasible'}
+              </span>
+              <button type="button" onClick={() => view.mutate(summary.id)}>
+                View
+              </button>
+              <button
+                type="button"
+                className="link-button"
+                onClick={() => remove.mutate(summary.id)}
+              >
+                Delete
+              </button>
+            </div>
+          </li>
+        ))}
+      </ul>
+      {open && (
+        <div>
+          <h3>{open.name}</h3>
+          <PlanView plan={open} />
         </div>
       )}
     </section>
@@ -204,6 +351,7 @@ export function PlannerPage() {
       <ProgramPicker />
       <PrereqStatusList />
       <SequencePlanner />
+      <SavedPlans />
     </main>
   )
 }

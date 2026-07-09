@@ -12,6 +12,7 @@ email, or id. Extraction/embeddings/search see public course text only.
 
 import json
 import time
+from collections.abc import Iterator
 from typing import Any
 
 import httpx
@@ -98,6 +99,31 @@ class OpenAICompatibleClient:
         )
         return _message_content(body)
 
+    def chat_text_stream(self, system: str, user: str) -> Iterator[str]:
+        """Stream assistant tokens via SSE (OpenAI-compatible `stream: true`).
+
+        Only the initial connection is guarded; once tokens start flowing we do
+        not retry (a mid-stream retry would duplicate already-emitted text).
+        """
+        payload = {
+            "model": self._settings.ai_chat_model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            "temperature": _ADVISORY_TEMPERATURE,
+            "stream": True,
+        }
+        try:
+            with self._http.stream("POST", "/chat/completions", json=payload) as response:
+                response.raise_for_status()
+                for line in response.iter_lines():
+                    token = _sse_token(line)
+                    if token:
+                        yield token
+        except httpx.HTTPError as exc:
+            raise AIProviderError(f"AI stream to /chat/completions failed: {exc}") from exc
+
     def embed(self, text: str) -> list[float]:
         body = self._post(
             "/embeddings",
@@ -114,6 +140,20 @@ class OpenAICompatibleClient:
 
     def close(self) -> None:
         self._http.close()
+
+
+def _sse_token(line: str) -> str | None:
+    """Extract the delta content from one SSE line, or None to skip it."""
+    if not line or not line.startswith("data:"):
+        return None
+    data = line[len("data:") :].strip()
+    if not data or data == "[DONE]":
+        return None
+    try:
+        chunk = json.loads(data)
+        return chunk["choices"][0]["delta"].get("content") or None
+    except (json.JSONDecodeError, KeyError, IndexError, TypeError):
+        return None
 
 
 def _message_content(body: dict[str, Any]) -> str:
@@ -341,12 +381,20 @@ class OpenAICompatibleAssistantProvider:
         self._client = client
 
     def answer(self, question: str, facts: dict[str, Any]) -> str:
-        facts_block = "\n".join(f"- {key}: {value}" for key, value in sorted(facts.items()))
-        user = (
-            f'Student question: "{question.strip()}"\n\n'
-            f"Verified facts from Gradient's deterministic calculators:\n{facts_block}"
+        return self._client.chat_text(_ASSISTANT_SYSTEM, _assistant_prompt(question, facts))
+
+    def stream_answer(self, question: str, facts: dict[str, Any]) -> Iterator[str]:
+        return self._client.chat_text_stream(
+            _ASSISTANT_SYSTEM, _assistant_prompt(question, facts)
         )
-        return self._client.chat_text(_ASSISTANT_SYSTEM, user)
+
+
+def _assistant_prompt(question: str, facts: dict[str, Any]) -> str:
+    facts_block = "\n".join(f"- {key}: {value}" for key, value in sorted(facts.items()))
+    return (
+        f'Student question: "{question.strip()}"\n\n'
+        f"Verified facts from Gradient's deterministic calculators:\n{facts_block}"
+    )
 
 
 # ── Embeddings (FR-3.9.1) ────────────────────────────────────────────────────

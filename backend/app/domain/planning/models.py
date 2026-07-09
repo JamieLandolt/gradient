@@ -103,6 +103,25 @@ class PlanResult:
 
 
 @dataclass(frozen=True)
+class PlanPreferences:
+    """Optional, deterministic scheduling preferences (FR-3.6.6).
+
+    Neither field ever relaxes prerequisite correctness or unit caps — they only
+    change the tie-break order among courses that are already eligible in a
+    semester, so every produced plan still re-validates.
+    """
+
+    prioritise_available: bool = False
+    # Course codes the student is interested in (matched to text upstream in the
+    # service, so the pure engine never touches catalogue-shaped fields).
+    interest_codes: frozenset[str] = frozenset()
+
+    @property
+    def is_active(self) -> bool:
+        return self.prioritise_available or bool(self.interest_codes)
+
+
+@dataclass(frozen=True)
 class ProgramRequirements:
     program_code: str
     required: frozenset[str]

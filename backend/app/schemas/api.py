@@ -69,6 +69,18 @@ class SequenceRequest(BaseModel):
     start_year: int = Field(ge=2000, le=2100)
     start_semester: Literal["S1", "S2"]
     max_units_per_semester: float = Field(default=8, gt=0, le=20)
+    # Planner preferences (FR-3.6.6, optional): front-load courses that are
+    # immediately takeable, and/or courses matching topic interests. Both only
+    # re-order the deterministic plan; they never relax prerequisite correctness.
+    prioritise_available: bool = False
+    interests: list[str] = Field(default_factory=list, max_length=20)
+
+
+class DegreePlanSaveRequest(SequenceRequest):
+    """Generate a sequence with the same inputs as /planner/sequence and save it
+    under a name (FR-3.6.2)."""
+
+    name: str = Field(default="My plan", min_length=1, max_length=100)
 
 
 class ProgramSelectionRequest(BaseModel):

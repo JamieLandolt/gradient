@@ -55,3 +55,21 @@ React SPA (Vite)  ──HTTPS/JSON──▶  FastAPI backend  ──service role
 
 Every endpoint returns `{"success": bool, "data": …, "error": str|null, "meta": …}`
 (`app/core/envelope.py`); errors are normalised by `app/core/errors.py`.
+
+The one exception is `POST /assistant/ask/stream`, which returns a `text/plain`
+`StreamingResponse` of answer tokens. Validation and grounded-fact assembly run
+*before* the stream begins (so bad input still yields a normal envelope error),
+and a provider failure mid-stream degrades to a short notice rather than a broken
+connection. Providers expose `stream_answer()` alongside `answer()`; the mock
+chunks its deterministic string so streaming works with zero setup.
+
+## Persisted AI/plan artefacts
+
+`app/repositories/artifacts.py` (`ArtifactRepository`) writes the student-owned
+`recommendations`/`study_plans`/`degree_plans` tables (+ children) created in
+migration 0005. Recommendations and study plans persist on generate and are
+revisitable via `latest`/list/get; degree plans are saved by name (FR-3.6.2).
+Like every student repository it uses the service-role client and filters by the
+JWT's `user_id` on every read, write, and delete (RLS is defence-in-depth). Only
+the deterministic `prereq_status` is stored on a recommendation item — never a
+model-asserted value.

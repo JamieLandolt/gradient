@@ -94,6 +94,8 @@ export interface PlanSequence {
 }
 
 export interface RecommendationSet {
+  id?: number
+  generated_at?: string | null
   provider: string
   items: {
     course_code: string
@@ -104,19 +106,52 @@ export interface RecommendationSet {
   disclaimer: string
 }
 
+export interface RecommendationSummary {
+  id: number
+  provider: string
+  generated_at: string | null
+  item_count: number
+}
+
 export interface StudyPlan {
+  id?: number
+  generated_at?: string | null
   provider: string
   course_code: string
   target_grade: number
   required_average_percent: number | null
-  target_status: string
+  target_status: string | null
   sessions: {
     session_date: string
     duration_minutes: number
     focus: string
-    assessment_name: string
+    assessment_name?: string
   }[]
   disclaimer: string
+}
+
+export interface StudyPlanSummary {
+  id: number
+  course_code: string | null
+  target_grade: number
+  provider: string
+  generated_at: string | null
+}
+
+export interface DegreePlanSummary {
+  id: number
+  name: string
+  feasible: boolean
+  generated_at: string | null
+}
+
+export interface SavedDegreePlan {
+  id: number
+  name: string
+  feasible: boolean
+  generated_at: string | null
+  semesters: PlanSequence['semesters']
+  diagnostics: PlanSequence['diagnostics']
 }
 
 export interface SearchResult {

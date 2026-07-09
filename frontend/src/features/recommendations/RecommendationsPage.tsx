@@ -1,4 +1,4 @@
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 
@@ -6,6 +6,11 @@ import { ApiError, apiClient } from '../../lib/apiClient'
 import type { RecommendationSet } from '../../types/api'
 
 export function RecommendationsPage() {
+  const queryClient = useQueryClient()
+  const { data: latest } = useQuery({
+    queryKey: ['recommendations-latest'],
+    queryFn: () => apiClient.get<RecommendationSet | null>('/recommendations/latest'),
+  })
   const [interests, setInterests] = useState('')
   const [result, setResult] = useState<RecommendationSet | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -22,10 +27,14 @@ export function RecommendationsPage() {
     onSuccess: (data) => {
       setResult(data)
       setError(null)
+      void queryClient.invalidateQueries({ queryKey: ['recommendations-latest'] })
     },
     onError: (err) =>
       setError(err instanceof ApiError ? err.message : 'Could not generate recommendations'),
   })
+
+  const shown = result ?? latest ?? null
+  const hasExisting = Boolean(shown)
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault()
@@ -43,17 +52,24 @@ export function RecommendationsPage() {
           onChange={(e) => setInterests(e.target.value)}
         />
         <button type="submit" disabled={generate.isPending}>
-          {generate.isPending ? 'Thinking…' : 'Recommend courses'}
+          {generate.isPending
+            ? 'Thinking…'
+            : hasExisting
+              ? 'Regenerate'
+              : 'Recommend courses'}
         </button>
       </form>
       {generate.isPending && (
         <p className="page-status" role="status">Generating recommendations…</p>
       )}
       {error && <p role="alert" className="form-error">{error}</p>}
-      {result && (
+      {shown && (
         <section aria-live="polite">
+          {!result && (
+            <p className="page-status">Your most recent recommendations:</p>
+          )}
           <ol className="card-list">
-            {result.items.map((item) => (
+            {shown.items.map((item) => (
               <li key={item.course_code} className="course-card">
                 <h2>{item.course_code}</h2>
                 <p>{item.reason}</p>
@@ -63,7 +79,7 @@ export function RecommendationsPage() {
               </li>
             ))}
           </ol>
-          <p className="page-status">{result.disclaimer}</p>
+          <p className="page-status">{shown.disclaimer}</p>
         </section>
       )}
     </main>

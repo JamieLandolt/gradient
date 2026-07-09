@@ -2,7 +2,12 @@
 
 import pytest
 
-from app.domain.planning.models import PlannableCourse, PrereqNode, Semester
+from app.domain.planning.models import (
+    PlannableCourse,
+    PlanPreferences,
+    PrereqNode,
+    Semester,
+)
 from app.domain.planning.scheduler import build_plan
 
 S1 = "S1"
@@ -170,6 +175,75 @@ class TestPlanValidity:
                     evaluation = evaluate_prereq(course_obj.prereq, frozenset(seen))
                     assert evaluation.status is PrereqStatus.MET
             seen.update(entry.course_code for entry in semester.entries)
+
+
+class TestPreferences:
+    """FR-3.6.6: deterministic, correctness-preserving scheduling preferences."""
+
+    def test_interest_courses_are_front_loaded(self):
+        # Two independent courses; only one fits per semester (units 2, cap 2).
+        courses = [course("AAAA"), course("BBBB")]
+        default = build_plan(
+            courses, completed=frozenset(), start=Semester(2026, S1),
+            max_units_per_semester=2,
+        )
+        assert semester_of(default, "AAAA") == 0  # alphabetical when nothing distinguishes
+
+        prefs = PlanPreferences(interest_codes=frozenset({"BBBB"}))
+        prioritised = build_plan(
+            courses, completed=frozenset(), start=Semester(2026, S1),
+            max_units_per_semester=2, preferences=prefs,
+        )
+        assert semester_of(prioritised, "BBBB") == 0  # interest wins the slot
+
+    def test_prioritise_available_prefers_fewer_prerequisites(self):
+        # MIDAAA unlocks TARGET (unlock-heavy) but has a prerequisite; LEAFZZ has none.
+        courses = [
+            course("MIDAAA", prereq=PrereqNode.course("DONE")),
+            course("LEAFZZ"),
+            course("TARGET", prereq=PrereqNode.course("MIDAAA")),
+        ]
+        completed = frozenset({"DONE"})
+        default = build_plan(
+            courses, completed=completed, start=Semester(2026, S1),
+            max_units_per_semester=2,
+        )
+        assert semester_of(default, "MIDAAA") == 0  # unlock-heavy first by default
+
+        prefs = PlanPreferences(prioritise_available=True)
+        prioritised = build_plan(
+            courses, completed=completed, start=Semester(2026, S1),
+            max_units_per_semester=2, preferences=prefs,
+        )
+        assert semester_of(prioritised, "LEAFZZ") == 0  # fewest prereqs brought forward
+
+    def test_explanations_reflect_active_preferences(self):
+        courses = [course("AAAA"), course("BBBB")]
+        prefs = PlanPreferences(
+            prioritise_available=True, interest_codes=frozenset({"BBBB"})
+        )
+        plan = build_plan(
+            courses, completed=frozenset(), start=Semester(2026, S1), preferences=prefs
+        )
+        explanations = {
+            e.course_code: e.explanation for s in plan.semesters for e in s.entries
+        }
+        assert "interests" in explanations["BBBB"].lower()
+        assert "take it now" in explanations["AAAA"].lower()
+
+    def test_preferences_never_break_prerequisite_order(self):
+        courses = [
+            course("CSSE2002", prereq=PrereqNode.course("CSSE1001")),
+            course("CSSE1001"),
+        ]
+        prefs = PlanPreferences(
+            prioritise_available=True, interest_codes=frozenset({"CSSE2002"})
+        )
+        plan = build_plan(
+            courses, completed=frozenset(), start=Semester(2026, S1), preferences=prefs
+        )
+        # Even though the dependent course is the "interest", correctness holds.
+        assert semester_of(plan, "CSSE1001") < semester_of(plan, "CSSE2002")
 
 
 def test_start_semester_alternates_periods():

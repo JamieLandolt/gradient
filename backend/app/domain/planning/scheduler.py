@@ -15,6 +15,7 @@ from app.domain.planning.models import (
     PlanDiagnostic,
     PlanEntry,
     PlannableCourse,
+    PlanPreferences,
     PlanResult,
     PlanSemester,
     PrereqStatus,
@@ -36,7 +37,29 @@ def _is_eligible(course: PlannableCourse, done: frozenset[str]) -> tuple[bool, b
     return False, False
 
 
-def _explanation(course: PlannableCourse, needs_manual_check: bool) -> str:
+def _sort_key(
+    course: PlannableCourse,
+    priorities: dict[str, int],
+    preferences: PlanPreferences,
+) -> tuple[int, int, str]:
+    """Deterministic tie-break order among the courses eligible this semester.
+
+    With no preferences this reduces to the historical "unlock-heavy first"
+    ordering. Interest matches always sort first; when 'prioritise available' is
+    set, remaining courses are ordered by fewest prerequisites (take what you can
+    now) instead of by unlock count.
+    """
+    interest_rank = 0 if course.code in preferences.interest_codes else 1
+    if preferences.prioritise_available:
+        secondary = len(collect_course_codes(course.prereq))
+    else:
+        secondary = -priorities.get(course.code, 0)
+    return (interest_rank, secondary, course.code)
+
+
+def _explanation(
+    course: PlannableCourse, needs_manual_check: bool, preferences: PlanPreferences
+) -> str:
     prereq_codes = sorted(collect_course_codes(course.prereq))
     if prereq_codes:
         base = (
@@ -45,6 +68,10 @@ def _explanation(course: PlannableCourse, needs_manual_check: bool) -> str:
         )
     else:
         base = "No prerequisites; placed in the first offered semester with capacity."
+    if course.code in preferences.interest_codes:
+        base += " Prioritised because it matches your stated interests."
+    elif preferences.prioritise_available and not prereq_codes:
+        base += " Brought forward because you can take it now."
     if needs_manual_check:
         base += " Contains a requirement that must be checked manually."
     return base
@@ -88,7 +115,9 @@ def build_plan(
     start: Semester,
     max_units_per_semester: float = DEFAULT_MAX_UNITS_PER_SEMESTER,
     max_semesters: int = DEFAULT_MAX_SEMESTERS,
+    preferences: PlanPreferences | None = None,
 ) -> PlanResult:
+    preferences = preferences or PlanPreferences()
     to_schedule = [course for course in courses if course.code not in completed]
     cycle_members = find_cycle_members(to_schedule)
     priorities = unlock_counts(to_schedule)
@@ -122,7 +151,7 @@ def build_plan(
             if is_eligible:
                 eligible.append((course, needs_check))
 
-        eligible.sort(key=lambda pair: (-priorities.get(pair[0].code, 0), pair[0].code))
+        eligible.sort(key=lambda pair: _sort_key(pair[0], priorities, preferences))
 
         entries: list[PlanEntry] = []
         used_units = 0.0
@@ -133,7 +162,7 @@ def build_plan(
                 PlanEntry(
                     course_code=course.code,
                     units=course.units,
-                    explanation=_explanation(course, needs_check),
+                    explanation=_explanation(course, needs_check, preferences),
                 )
             )
             used_units += course.units

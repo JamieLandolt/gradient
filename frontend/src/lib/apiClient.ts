@@ -74,3 +74,64 @@ export const apiClient = {
     request<T>(path, { method: 'PATCH', body: payload === undefined ? undefined : JSON.stringify(payload) }),
   delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
 }
+
+/** The current Supabase access token, for callers that bypass the JSON wrapper. */
+export async function getAccessToken(): Promise<string | null> {
+  return tokenProvider()
+}
+
+/**
+ * POST that streams a plain-text response body, invoking `onChunk` as bytes
+ * arrive (used by the assistant). Errors are still JSON envelopes, so a non-OK
+ * response is unwrapped into an ApiError like every other call.
+ */
+export async function streamPost(
+  path: string,
+  payload: unknown,
+  onChunk: (text: string) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const token = await tokenProvider()
+  const headers = new Headers({ 'Content-Type': 'application/json' })
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`)
+  }
+
+  let response: Response
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+      signal,
+    })
+  } catch {
+    throw new ApiError('Cannot reach the Gradient server. Check your connection.', 0)
+  }
+
+  if (!response.ok) {
+    let message = 'The assistant is unavailable right now.'
+    try {
+      const body = (await response.json()) as ApiEnvelope<unknown>
+      message = body.error ?? message
+    } catch {
+      /* error body was not JSON — keep the generic message */
+    }
+    throw new ApiError(message, response.status)
+  }
+
+  if (!response.body) {
+    onChunk(await response.text())
+    return
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    if (value) onChunk(decoder.decode(value, { stream: true }))
+  }
+  const tail = decoder.decode()
+  if (tail) onChunk(tail)
+}

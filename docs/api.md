@@ -47,7 +47,10 @@
 | --- | --- | --- |
 | GET/PUT | `/planner/programs` | Get/set the student's 1–2 programs |
 | GET | `/planner/prereq-status` | met / partially_met / not_met per program course |
-| POST | `/planner/sequence` | `{start_year, start_semester, max_units_per_semester?}` → semester plan + diagnostics |
+| POST | `/planner/sequence` | `{start_year, start_semester, max_units_per_semester?, prioritise_available?, interests?[]}` → semester plan + diagnostics (preferences re-order deterministically; explanations surfaced per course — FR-3.6.6) |
+| GET | `/planner/plans` | List the student's saved degree plans (FR-3.6.2) |
+| POST | `/planner/plans` | Generate a sequence (same body as `/sequence` + `name`) and save it |
+| GET/DELETE | `/planner/plans/{id}` | Fetch / delete a saved degree plan |
 
 ## Ingestion & curation
 
@@ -62,10 +65,15 @@
 
 | Method | Path | Description |
 | --- | --- | --- |
-| POST | `/recommendations/generate` | `{interests[], limit}` → ranked advisory suggestions |
-| POST | `/study-plans/generate` | `{enrolment_id, target_grade, start_date?}` → study sessions |
+| POST | `/recommendations/generate` | `{interests[], limit}` → ranked advisory suggestions (persisted) |
+| GET | `/recommendations/latest` | Most recent saved recommendation set (or `null`) |
+| GET/DELETE | `/recommendations` · `/recommendations/{id}` | List saved sets / delete one |
+| POST | `/study-plans/generate` | `{enrolment_id, target_grade, start_date?}` → study sessions (persisted) |
+| GET | `/study-plans` · `/study-plans/{id}` | List saved plans / fetch one with sessions |
+| DELETE | `/study-plans/{id}` | Delete a saved study plan |
 | GET | `/search/courses?q=…` | Semantic search over course descriptions (public) |
 | POST | `/assistant/ask` | Grounded Q&A over the student's own figures |
+| POST | `/assistant/ask/stream` | Same, streamed token-by-token as `text/plain` (FR-3.9.3) |
 
 ## Account (auth)
 

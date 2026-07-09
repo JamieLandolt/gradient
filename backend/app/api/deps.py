@@ -10,6 +10,7 @@ from app.core.auth import AuthUser, get_current_user
 from app.core.db import get_supabase_client
 from app.core.errors import ForbiddenError
 from app.providers.factory import ProviderBundle, get_providers
+from app.repositories.artifacts import ArtifactRepository
 from app.repositories.catalogue import CatalogueRepository
 from app.repositories.ingestion import IngestionRepository
 from app.repositories.students import StudentRepository
@@ -31,6 +32,10 @@ def get_student_repo(settings: Settings = Depends(get_settings_dep)) -> StudentR
     return StudentRepository(get_supabase_client(settings))
 
 
+def get_artifact_repo(settings: Settings = Depends(get_settings_dep)) -> ArtifactRepository:
+    return ArtifactRepository(get_supabase_client(settings))
+
+
 def get_tracking_service(
     catalogue: CatalogueRepository = Depends(get_catalogue_repo),
     students: StudentRepository = Depends(get_student_repo),
@@ -41,8 +46,9 @@ def get_tracking_service(
 def get_planner_service(
     catalogue: CatalogueRepository = Depends(get_catalogue_repo),
     students: StudentRepository = Depends(get_student_repo),
+    artifacts: ArtifactRepository = Depends(get_artifact_repo),
 ) -> PlannerService:
-    return PlannerService(catalogue, students)
+    return PlannerService(catalogue, students, artifacts)
 
 
 def get_ingestion_repo(settings: Settings = Depends(get_settings_dep)) -> IngestionRepository:
@@ -66,8 +72,9 @@ def get_advisory_service(
     ingestion: IngestionRepository = Depends(get_ingestion_repo),
     tracking: TrackingService = Depends(get_tracking_service),
     providers: ProviderBundle = Depends(get_providers_dep),
+    artifacts: ArtifactRepository = Depends(get_artifact_repo),
 ) -> AdvisoryService:
-    return AdvisoryService(catalogue, students, ingestion, tracking, providers)
+    return AdvisoryService(catalogue, students, ingestion, tracking, providers, artifacts)
 
 
 def get_current_curator(

@@ -1,5 +1,6 @@
 """Determinism and behaviour of the mock recommendation / study-plan providers."""
 
+from app.providers.mock.assistant import MockAssistantProvider
 from app.providers.mock.recommendations import MockRecommendationProvider
 from app.providers.mock.study_plans import MockStudyPlanProvider
 
@@ -78,3 +79,24 @@ class TestStudyPlans:
         second = provider.generate("CSSE1001", self.ITEMS, 5, 55.0, "2026-04-01")
 
         assert first == second
+
+
+class TestAssistantStreaming:
+    FACTS = {"GPA": 6.0, "completed courses": 3, "secured percent": 16.0}
+
+    def test_stream_reconstructs_the_full_answer(self):
+        provider = MockAssistantProvider()
+
+        full = provider.answer("How am I doing?", self.FACTS)
+        streamed = "".join(provider.stream_answer("How am I doing?", self.FACTS))
+
+        assert streamed == full
+        assert "GPA" in streamed
+        assert "authoritative" in streamed
+
+    def test_stream_yields_multiple_chunks(self):
+        provider = MockAssistantProvider()
+
+        chunks = list(provider.stream_answer("hi", self.FACTS))
+
+        assert len(chunks) > 1

@@ -5,6 +5,7 @@ import companyLogo from '../assets/gradient-company-logo-cn.png'
 
 import { Layout } from './components/Layout'
 import { AccountPage } from './features/account/AccountPage'
+import { AssistantPage } from './features/assistant/AssistantPage'
 import { LoginPage } from './features/auth/LoginPage'
 import { ProtectedRoute } from './features/auth/ProtectedRoute'
 import { RegisterPage } from './features/auth/RegisterPage'
@@ -69,6 +70,7 @@ export default function App() {
                 <Route path="/import" element={<ImportPage />} />
                 <Route path="/recommendations" element={<RecommendationsPage />} />
                 <Route path="/study-plans" element={<StudyPlanPage />} />
+                <Route path="/assistant" element={<AssistantPage />} />
                 <Route path="/search" element={<SearchPage />} />
                 <Route path="/account" element={<AccountPage />} />
               </Route>

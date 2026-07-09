@@ -3,9 +3,23 @@
 from pathlib import Path
 
 from app.core.auth import AuthUser
-from tests.api.fakes import FakeCatalogueRepository, FakeIngestionRepository, build_client
+from tests.api.fakes import (
+    FakeArtifactRepository,
+    FakeCatalogueRepository,
+    FakeIngestionRepository,
+    FakeStudentRepository,
+    build_client,
+)
 
 ALICE = AuthUser(id="user-alice", email="alice@uq.test")
+BOB = AuthUser(id="user-bob", email="bob@uq.test")
+
+
+def _enrol(client, code="CSSE1001", year=2026, semester="S1"):
+    return client.post(
+        "/api/v1/enrolments",
+        json={"course_code": code, "year": year, "semester": semester},
+    ).json()["data"]
 SAMPLES = Path(__file__).resolve().parents[2].parent / "seed" / "data" / "ecp_samples"
 
 
@@ -143,3 +157,96 @@ class TestAdvisory:
         answer = response.json()["data"]["answer"]
         assert "GPA" in answer
         assert "authoritative" in answer
+
+
+class TestPersistence:
+    def test_recommendations_persist_reload_list_and_delete(self):
+        client, _, _ = build_client(user=ALICE)
+
+        generated = client.post(
+            "/api/v1/recommendations/generate",
+            json={"interests": ["algorithms"], "limit": 3},
+        ).json()["data"]
+        assert isinstance(generated["id"], int)
+
+        latest = client.get("/api/v1/recommendations/latest").json()["data"]
+        assert latest["id"] == generated["id"]
+
+        def fields(item):
+            return (item["course_code"], item["rank"], item["reason"], item["prereq_status"])
+
+        # rank, reason, and the deterministic prereq_status must all round-trip.
+        assert [fields(i) for i in latest["items"]] == [fields(i) for i in generated["items"]]
+
+        listing = client.get("/api/v1/recommendations").json()["data"]
+        assert listing[0]["id"] == generated["id"]
+
+        deleted = client.delete(f"/api/v1/recommendations/{generated['id']}")
+        assert deleted.status_code == 200
+        assert client.get("/api/v1/recommendations/latest").json()["data"] is None
+
+    def test_latest_recommendation_is_null_when_none_saved(self):
+        client, _, _ = build_client(user=ALICE)
+
+        assert client.get("/api/v1/recommendations/latest").json()["data"] is None
+
+    def test_study_plan_persists_lists_and_is_fetchable(self):
+        client, _, _ = build_client(user=ALICE)
+        enrolment = _enrol(client)
+
+        generated = client.post(
+            "/api/v1/study-plans/generate",
+            json={"enrolment_id": enrolment["id"], "target_grade": 6,
+                  "start_date": "2026-03-01"},
+        ).json()["data"]
+        assert isinstance(generated["id"], int)
+
+        listing = client.get("/api/v1/study-plans").json()["data"]
+        assert listing[0]["id"] == generated["id"]
+        assert listing[0]["course_code"] == "CSSE1001"
+
+        full = client.get(f"/api/v1/study-plans/{generated['id']}").json()["data"]
+        assert full["course_code"] == "CSSE1001"
+        assert full["sessions"]
+
+        assert client.delete(f"/api/v1/study-plans/{generated['id']}").status_code == 200
+        assert client.get("/api/v1/study-plans").json()["data"] == []
+
+    def test_another_user_cannot_read_a_saved_study_plan(self):
+        catalogue = FakeCatalogueRepository()
+        students = FakeStudentRepository(catalogue)
+        artifacts = FakeArtifactRepository(catalogue, students)
+        alice, _, _ = build_client(
+            catalogue=catalogue, students=students, artifacts=artifacts, user=ALICE
+        )
+        enrolment = _enrol(alice)
+        plan = alice.post(
+            "/api/v1/study-plans/generate",
+            json={"enrolment_id": enrolment["id"], "target_grade": 6},
+        ).json()["data"]
+
+        bob, _, _ = build_client(
+            catalogue=catalogue, students=students, artifacts=artifacts, user=BOB
+        )
+        assert bob.get(f"/api/v1/study-plans/{plan['id']}").status_code == 404
+
+
+class TestAssistantStreaming:
+    def test_streamed_answer_matches_the_non_streamed_answer(self):
+        client, _, _ = build_client(user=ALICE)
+        question = {"question": "How am I doing?"}
+
+        whole = client.post("/api/v1/assistant/ask", json=question).json()["data"]["answer"]
+        with client.stream("POST", "/api/v1/assistant/ask/stream", json=question) as stream:
+            assert stream.status_code == 200
+            streamed = "".join(chunk for chunk in stream.iter_text())
+
+        assert streamed == whole
+        assert "GPA" in streamed
+
+    def test_stream_rejects_a_blank_question(self):
+        client, _, _ = build_client(user=ALICE)
+
+        response = client.post("/api/v1/assistant/ask/stream", json={"question": "   "})
+
+        assert response.status_code == 422
