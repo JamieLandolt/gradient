@@ -10,6 +10,7 @@ Safe to run repeatedly — existing rows are updated or replaced, never duplicat
 """
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -19,7 +20,8 @@ OFFERING_YEARS = (2024, 2025, 2026, 2027)
 
 sys.path.insert(0, str(REPO_ROOT / "backend"))
 
-from app.providers.mock.embeddings import MOCK_EMBEDDING_MODEL, embed_text  # noqa: E402
+from app.config import Settings  # noqa: E402
+from app.providers.factory import get_providers  # noqa: E402
 
 
 def load_backend_env() -> dict[str, str]:
@@ -186,12 +188,20 @@ def replace_programs(db, programs: list[dict], course_ids: dict[str, int]) -> No
         db.table("program_courses").insert(rows).execute()
 
 
-def upsert_embeddings(db, courses: list[dict], course_ids: dict[str, int]) -> None:
+def build_embedder():
+    """The configured embedding provider (mock or hosted), from backend/.env."""
+    env = load_backend_env()
+    for key, value in env.items():
+        os.environ.setdefault(key, value)
+    return get_providers(Settings(_env_file=None)).embeddings
+
+
+def upsert_embeddings(db, courses: list[dict], course_ids: dict[str, int], embedder) -> None:
     rows = [
         {
             "course_id": course_ids[c["code"]],
-            "embedding": embed_text(f"{c['code']} {c['title']} {c['description']}"),
-            "model": MOCK_EMBEDDING_MODEL,
+            "embedding": embedder.embed(f"{c['code']} {c['title']} {c['description']}"),
+            "model": embedder.model_name,
         }
         for c in courses
     ]
@@ -223,8 +233,9 @@ def main() -> None:
     replace_prerequisites(db, prereqs, course_ids)
     print(f"Seeding {len(programs)} programs…")
     replace_programs(db, programs, course_ids)
-    print("Seeding course embeddings…")
-    upsert_embeddings(db, courses, course_ids)
+    embedder = build_embedder()
+    print(f"Seeding course embeddings via {embedder.model_name}…")
+    upsert_embeddings(db, courses, course_ids, embedder)
     print("Done — seed is idempotent; re-running updates in place.")
 
 
