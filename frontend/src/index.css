@@ -518,3 +518,50 @@ textarea { width: 100%; font-family: var(--mono); font-size: 0.88rem; margin-bot
   align-items: center;
   flex-wrap: wrap;
 }
+
+/* ── Wide-table horizontal scroll (data tables must not overflow the page) ── */
+.table-scroll { overflow-x: auto; width: 100%; }
+
+/* ── Error boundary fallback ── */
+.error-fallback { text-align: center; padding: 3rem 1rem; }
+.error-fallback h1 { margin-bottom: 0.5rem; }
+.error-fallback .btn { margin-top: 1rem; }
+
+/* ── Mobile nav toggle (hidden on desktop) ── */
+.nav-toggle {
+  display: none;
+  margin-left: auto;
+  background: none;
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+  border-radius: 8px;
+  font-size: 1.2rem;
+  line-height: 1;
+  padding: 0.3rem 0.6rem;
+  cursor: pointer;
+}
+.nav-toggle:hover { border-color: var(--accent); }
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  .app-content { padding: 1.25rem 1rem 2.5rem; }
+}
+@media (max-width: 640px) {
+  .app-header { gap: 0.75rem; }
+  .nav-toggle { display: block; }
+  .app-header nav {
+    display: none;
+    flex-basis: 100%;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.15rem;
+  }
+  .app-header nav.nav-open { display: flex; }
+  .app-header nav a { width: 100%; padding: 0.5rem 0.6rem; }
+  .inline-form,
+  .calculator-actions,
+  .pref-row { flex-direction: column; align-items: stretch; }
+  .semester-grid { grid-template-columns: 1fr; }
+  .chat-message { max-width: 100%; }
+  .app-content { padding: 1rem 0.85rem 2.5rem; }
+}

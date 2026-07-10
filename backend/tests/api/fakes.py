@@ -97,6 +97,12 @@ class FakeCatalogueRepository:
     def get_prereq_raw_text(self, course_id: int):
         return self.raw_prereqs.get(course_id)
 
+    def get_prereq_trees(self, course_ids: list[int]):
+        return {cid: self.prereq_trees.get(cid) for cid in course_ids}
+
+    def get_prereq_raw_texts(self, course_ids: list[int]):
+        return {cid: self.raw_prereqs[cid] for cid in course_ids if cid in self.raw_prereqs}
+
     def list_programs(self):
         return [dict(p) for p in self.programs]
 

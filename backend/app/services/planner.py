@@ -119,14 +119,17 @@ class PlannerService:
         """Prerequisite status for every course in the student's program(s) (FR-3.6.4)."""
         merged = merge_required_courses(self._program_requirements(user_id))
         completed = self._students.completed_course_codes(user_id)
+        codes = sorted(merged.required | merged.elective)
+        # Batch the catalogue reads (was get_course + get_prereq_tree + raw-text per code).
+        by_code = {course["code"]: course for course in self._catalogue.list_courses()}
+        relevant = [by_code[code] for code in codes if code in by_code]
+        course_ids = [course["id"] for course in relevant]
+        trees = self._catalogue.get_prereq_trees(course_ids)
+        raw_by_id = self._catalogue.get_prereq_raw_texts(course_ids)
         statuses = []
-        for code in sorted(merged.required | merged.elective):
-            course = self._catalogue.get_course(code)
-            if course is None:
-                continue
-            evaluation = evaluate_prereq(
-                self._catalogue.get_prereq_tree(course["id"]), completed
-            )
+        for course in relevant:
+            code = course["code"]
+            evaluation = evaluate_prereq(trees.get(course["id"]), completed)
             statuses.append(
                 {
                     "course_code": code,
@@ -136,7 +139,7 @@ class PlannerService:
                     "prereq_status": evaluation.status.value,
                     "outstanding": list(evaluation.outstanding),
                     "requires_manual_check": evaluation.requires_manual_check,
-                    "raw_prerequisite": self._catalogue.get_prereq_raw_text(course["id"]),
+                    "raw_prerequisite": raw_by_id.get(course["id"]),
                 }
             )
         return statuses

@@ -59,11 +59,11 @@ class AdvisoryService:
         completed = self._students.completed_course_codes(user_id)
         courses = self._catalogue.list_courses()
         code_to_id = {course["code"]: course["id"] for course in courses}
+        # One batched query instead of two per course (was N+1 over the catalogue).
+        trees = self._catalogue.get_prereq_trees([course["id"] for course in courses])
         candidates = []
         for course in courses:
-            evaluation = evaluate_prereq(
-                self._catalogue.get_prereq_tree(course["id"]), completed
-            )
+            evaluation = evaluate_prereq(trees.get(course["id"]), completed)
             candidates.append(
                 {
                     "code": course["code"],

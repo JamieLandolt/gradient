@@ -3,6 +3,7 @@ import { BrowserRouter, Link, Route, Routes } from 'react-router-dom'
 
 import companyLogo from '../assets/gradient-company-logo-cn.png'
 
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { Layout } from './components/Layout'
 import { AccountPage } from './features/account/AccountPage'
 import { AssistantPage } from './features/assistant/AssistantPage'
@@ -56,6 +57,7 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <SessionProvider>
         <BrowserRouter>
+          <ErrorBoundary>
           <Routes>
             <Route element={<Layout />}>
               <Route path="/" element={<HomePage />} />
@@ -76,6 +78,7 @@ export default function App() {
               </Route>
             </Route>
           </Routes>
+          </ErrorBoundary>
         </BrowserRouter>
       </SessionProvider>
     </QueryClientProvider>

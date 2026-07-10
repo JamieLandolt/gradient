@@ -29,7 +29,30 @@ export type AccessTokenProvider = () => Promise<string | null>
 
 const API_BASE_URL: string = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api/v1'
 
+/** Guards the connection + response-headers phase so a hung call can't freeze the UI. */
+const REQUEST_TIMEOUT_MS = 20_000
+
 let tokenProvider: AccessTokenProvider = async () => null
+
+/**
+ * fetch() that aborts if no response headers arrive within REQUEST_TIMEOUT_MS.
+ * The timer is cleared once the Response is in hand, so a long streamed body
+ * (the assistant) is never cut off mid-stream.
+ */
+async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+  try {
+    return await fetch(url, { ...init, signal: controller.signal })
+  } catch {
+    if (controller.signal.aborted) {
+      throw new ApiError('The server took too long to respond — please try again.', 0)
+    }
+    throw new ApiError('Cannot reach the Gradient server. Check your connection.', 0)
+  } finally {
+    clearTimeout(timer)
+  }
+}
 
 /** Called once at app start-up with a function returning the Supabase access token. */
 export function setAccessTokenProvider(provider: AccessTokenProvider): void {
@@ -44,12 +67,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     headers.set('Authorization', `Bearer ${token}`)
   }
 
-  let response: Response
-  try {
-    response = await fetch(`${API_BASE_URL}${path}`, { ...init, headers })
-  } catch {
-    throw new ApiError('Cannot reach the Gradient server. Check your connection.', 0)
-  }
+  const response = await fetchWithTimeout(`${API_BASE_URL}${path}`, { ...init, headers })
 
   let body: ApiEnvelope<T>
   try {
@@ -89,7 +107,6 @@ export async function streamPost(
   path: string,
   payload: unknown,
   onChunk: (text: string) => void,
-  signal?: AbortSignal,
 ): Promise<void> {
   const token = await tokenProvider()
   const headers = new Headers({ 'Content-Type': 'application/json' })
@@ -97,17 +114,11 @@ export async function streamPost(
     headers.set('Authorization', `Bearer ${token}`)
   }
 
-  let response: Response
-  try {
-    response = await fetch(`${API_BASE_URL}${path}`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(payload),
-      signal,
-    })
-  } catch {
-    throw new ApiError('Cannot reach the Gradient server. Check your connection.', 0)
-  }
+  const response = await fetchWithTimeout(`${API_BASE_URL}${path}`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload),
+  })
 
   if (!response.ok) {
     let message = 'The assistant is unavailable right now.'

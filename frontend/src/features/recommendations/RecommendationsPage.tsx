@@ -68,6 +68,9 @@ export function RecommendationsPage() {
           {!result && (
             <p className="page-status">Your most recent recommendations:</p>
           )}
+          {shown.items.length === 0 && (
+            <p className="page-status">No matches — try different interests.</p>
+          )}
           <ol className="card-list">
             {shown.items.map((item) => (
               <li key={item.course_code} className="course-card">

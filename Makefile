@@ -1,5 +1,5 @@
 .PHONY: backend-install frontend-install install backend-dev frontend-dev \
-	backend-test frontend-test test lint ci seed migrate wake promote-curator
+	backend-test frontend-test test lint ci seed migrate wake promote-curator up down
 
 PYTHON := python3
 BACKEND := backend
@@ -41,6 +41,13 @@ lint:
 
 # Full local CI gate — run before every phase PR
 ci: lint test
+
+# ── Containers (one-command demo against hosted Supabase) ───────────────────
+up:
+	docker compose up --build
+
+down:
+	docker compose down
 
 # ── Database ────────────────────────────────────────────────────────────────
 migrate:

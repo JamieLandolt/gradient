@@ -240,6 +240,7 @@ export function CourseDetailPage() {
         )}
       </section>
 
+      <div className="table-scroll">
       <table className="calculator-table">
         <thead>
           <tr>
@@ -261,6 +262,7 @@ export function CourseDetailPage() {
           ))}
         </tbody>
       </table>
+      </div>
       {standing.items[0]?.source === 'custom' && (
         <AddCustomAssessment enrolmentId={enrolmentId} onDone={refresh} />
       )}

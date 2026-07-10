@@ -162,6 +162,42 @@ class CatalogueRepository:
         )
         return rows[0]["raw_text"] if rows else None
 
+    # ── Batch prerequisite loads (avoid N+1: one query for many courses) ──
+    def get_prereq_trees(self, course_ids: list[int]) -> dict[int, PrereqNode | None]:
+        """Prerequisite AST for each course id, in two queries total (not 2·N)."""
+        if not course_ids:
+            return {}
+        rows = (
+            self._db.table("prerequisite_nodes")
+            .select("id, course_id, parent_id, node_type, child_course_id, note_text, sort_order")
+            .in_("course_id", course_ids)
+            .execute()
+            .data
+        )
+        by_course: dict[int, list[dict[str, Any]]] = {}
+        for row in rows:
+            by_course.setdefault(row["course_id"], []).append(row)
+        referenced = [r["child_course_id"] for r in rows if r["child_course_id"] is not None]
+        code_by_id: dict[int, str] = {}
+        if referenced:
+            course_rows = (
+                self._db.table("courses").select("id, code").in_("id", referenced).execute().data
+            )
+            code_by_id = {row["id"]: row["code"] for row in course_rows}
+        return {cid: build_prereq_tree(by_course.get(cid, []), code_by_id) for cid in course_ids}
+
+    def get_prereq_raw_texts(self, course_ids: list[int]) -> dict[int, str]:
+        if not course_ids:
+            return {}
+        rows = (
+            self._db.table("course_prerequisites_raw")
+            .select("course_id, raw_text")
+            .in_("course_id", course_ids)
+            .execute()
+            .data
+        )
+        return {row["course_id"]: row["raw_text"] for row in rows}
+
     # ── Programs ──────────────────────────────────────────────────────────
     def list_programs(self) -> list[dict[str, Any]]:
         return (
