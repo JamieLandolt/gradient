@@ -284,22 +284,22 @@ function SavedPlans() {
     queryKey: ['saved-plans'],
     queryFn: () => apiClient.get<DegreePlanSummary[]>('/planner/plans'),
   })
-  const [open, setOpen] = useState<SavedDegreePlan | null>(null)
+  const [openId, setOpenId] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const view = useMutation({
-    mutationFn: (id: number) => apiClient.get<SavedDegreePlan>(`/planner/plans/${id}`),
-    onSuccess: (data) => {
-      setOpen(data)
-      setError(null)
-    },
-    onError: (err) =>
-      setError(err instanceof ApiError ? err.message : 'Could not open that plan'),
+  // A read modelled as a query: retries on a transient failure, caches per plan
+  // (instant re-open), and gives loading/error states — unlike the previous
+  // useMutation, which failed silently and rendered nothing on any hiccup.
+  const openPlan = useQuery({
+    queryKey: ['saved-plan', openId],
+    queryFn: () => apiClient.get<SavedDegreePlan>(`/planner/plans/${openId}`),
+    enabled: openId !== null,
   })
+
   const remove = useMutation({
     mutationFn: (id: number) => apiClient.delete(`/planner/plans/${id}`),
     onSuccess: (_data, id) => {
-      if (open?.id === id) setOpen(null)
+      if (openId === id) setOpenId(null)
       void queryClient.invalidateQueries({ queryKey: ['saved-plans'] })
     },
     onError: (err) =>
@@ -320,26 +320,40 @@ function SavedPlans() {
               <span className={`prereq-badge prereq-${summary.feasible ? 'met' : 'not_met'}`}>
                 {summary.feasible ? 'Feasible' : 'Not feasible'}
               </span>
-              <button type="button" onClick={() => view.mutate(summary.id)}>
-                View
+              <button
+                type="button"
+                aria-pressed={openId === summary.id}
+                onClick={() => setOpenId(openId === summary.id ? null : summary.id)}
+              >
+                {openId === summary.id ? 'Hide' : 'View'}
               </button>
               <button
                 type="button"
                 className="link-button"
                 onClick={() => remove.mutate(summary.id)}
+                disabled={remove.isPending}
               >
                 Delete
               </button>
             </div>
+            {openId === summary.id && (
+              <div aria-live="polite">
+                {openPlan.isFetching && (
+                  <p className="page-status" role="status">Loading plan…</p>
+                )}
+                {openPlan.error && (
+                  <p role="alert" className="form-error">
+                    {openPlan.error instanceof ApiError
+                      ? openPlan.error.message
+                      : 'Could not open that plan'}
+                  </p>
+                )}
+                {openPlan.data && <PlanView plan={openPlan.data} />}
+              </div>
+            )}
           </li>
         ))}
       </ul>
-      {open && (
-        <div>
-          <h3>{open.name}</h3>
-          <PlanView plan={open} />
-        </div>
-      )}
     </section>
   )
 }

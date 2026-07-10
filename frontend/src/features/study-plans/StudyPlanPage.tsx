@@ -37,6 +37,7 @@ export function StudyPlanPage() {
 
   const load = useMutation({
     mutationFn: (id: number) => apiClient.get<StudyPlan>(`/study-plans/${id}`),
+    retry: 1, // recover from a transient hiccup instead of failing silently
     onSuccess: (data) => {
       setPlan(data)
       setError(null)
@@ -111,8 +112,12 @@ export function StudyPlanPage() {
                 <div className="saved-plan-row">
                   <strong>{summary.course_code ?? 'Course'}</strong>
                   <span>grade {summary.target_grade}</span>
-                  <button type="button" onClick={() => load.mutate(summary.id)}>
-                    View
+                  <button
+                    type="button"
+                    onClick={() => load.mutate(summary.id)}
+                    disabled={load.isPending && load.variables === summary.id}
+                  >
+                    {load.isPending && load.variables === summary.id ? 'Loading…' : 'View'}
                   </button>
                   <button
                     type="button"
