@@ -41,17 +41,18 @@ def _sort_key(
     course: PlannableCourse,
     priorities: dict[str, int],
     preferences: PlanPreferences,
+    done_codes: frozenset[str] = frozenset(),
 ) -> tuple[int, int, str]:
     """Deterministic tie-break order among the courses eligible this semester.
 
     With no preferences this reduces to the historical "unlock-heavy first"
     ordering. Interest matches always sort first; when 'prioritise available' is
-    set, remaining courses are ordered by fewest prerequisites (take what you can
-    now) instead of by unlock count.
+    set, remaining courses are ordered by fewest remaining (unmet) prerequisites
+    instead of by unlock count.
     """
     interest_rank = 0 if course.code in preferences.interest_codes else 1
     if preferences.prioritise_available:
-        secondary = len(collect_course_codes(course.prereq))
+        secondary = len(collect_course_codes(course.prereq) - done_codes)
     else:
         secondary = -priorities.get(course.code, 0)
     return (interest_rank, secondary, course.code)
@@ -151,7 +152,7 @@ def build_plan(
             if is_eligible:
                 eligible.append((course, needs_check))
 
-        eligible.sort(key=lambda pair: _sort_key(pair[0], priorities, preferences))
+        eligible.sort(key=lambda pair: _sort_key(pair[0], priorities, preferences, done_before))
 
         entries: list[PlanEntry] = []
         used_units = 0.0

@@ -101,7 +101,16 @@ class AdvisoryService:
             "id": record["id"],
             "generated_at": record.get("generated_at"),
             "provider": self._providers.name,
-            "items": items,
+            "items": [
+                {
+                    "course_code": item["course_code"],
+                    "rank": item["rank"],
+                    "reason": item["reason"],
+                    "prereq_status": item["prereq_status"],
+                }
+                for item in items
+                if item["course_code"] in seen
+            ],
             "disclaimer": _RECOMMENDATION_DISCLAIMER,
         }
 
@@ -156,7 +165,7 @@ class AdvisoryService:
         target_grade: int,
         start_date: str | None,
     ) -> dict[str, Any]:
-        enrolment = self._tracking._require_enrolment(user_id, enrolment_id)
+        enrolment = self._tracking.require_enrolment(user_id, enrolment_id)
         rows = self._tracking.assessment_rows(user_id, enrolment)
         if not rows:
             raise ValidationFailedError("This course has no assessment items yet")
@@ -218,7 +227,7 @@ class AdvisoryService:
                     "session_date": s["session_date"],
                     "duration_minutes": s["duration_minutes"],
                     "focus": s["focus"],
-                    "assessment_name": "",
+                    "assessment_name": s.get("assessment_name", ""),
                     "sort_order": s.get("sort_order", 0),
                 }
                 for s in sessions

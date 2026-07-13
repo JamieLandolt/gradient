@@ -20,4 +20,4 @@ def settings() -> Settings:
 
 @pytest.fixture()
 def client(settings: Settings) -> TestClient:
-    return TestClient(create_app(settings), raise_server_exceptions=False)
+    return TestClient(create_app(settings), raise_server_exceptions=True)

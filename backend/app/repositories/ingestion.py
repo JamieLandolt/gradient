@@ -1,6 +1,7 @@
 """Ingestion pipeline data access: jobs, draft profile versions, prerequisite
 trees, and course embeddings (FR-3.5.x, FR-3.9.1)."""
 
+from datetime import UTC, datetime
 from typing import Any
 
 from supabase import Client
@@ -126,7 +127,7 @@ class IngestionRepository:
         values: dict[str, Any] = {"status": status}
         if status == "verified":
             values["verified_by"] = verified_by
-            values["verified_at"] = "now()"
+            values["verified_at"] = datetime.now(UTC).isoformat()
         rows = (
             self._db.table("profile_versions")
             .update(values)
@@ -182,10 +183,16 @@ class IngestionRepository:
             .data[0]
         )
 
-    def update_job(self, job_id: int, values: dict[str, Any]) -> dict[str, Any] | None:
-        rows = (
-            self._db.table("ingestion_jobs").update(values).eq("id", job_id).execute().data
-        )
+    def update_job(
+        self,
+        job_id: int,
+        values: dict[str, Any],
+        user_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        query = self._db.table("ingestion_jobs").update(values).eq("id", job_id)
+        if user_id is not None:
+            query = query.eq("submitted_by", user_id)
+        rows = query.execute().data
         return rows[0] if rows else None
 
     def get_job(self, user_id: str, job_id: int) -> dict[str, Any] | None:

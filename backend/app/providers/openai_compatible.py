@@ -45,10 +45,12 @@ class OpenAICompatibleClient:
         self._http = httpx.Client(
             base_url=settings.ai_base_url.rstrip("/"),
             headers={"Authorization": f"Bearer {settings.dashscope_api_key}"},
-            timeout=settings.ai_request_timeout_s,
-            # No keep-alive: the hosted endpoint can close idle pooled connections,
-            # which surfaced as intermittent "SSL: UNEXPECTED_EOF" on reuse. A fresh
-            # connection per call is robust at our low call volume.
+            timeout=httpx.Timeout(
+                connect=settings.ai_request_timeout_s,
+                read=60.0,
+                write=settings.ai_request_timeout_s,
+                pool=settings.ai_request_timeout_s,
+            ),
             limits=httpx.Limits(max_keepalive_connections=0),
         )
 
@@ -60,6 +62,14 @@ class OpenAICompatibleClient:
                 response = self._http.post(path, json=payload)
                 response.raise_for_status()
                 return response.json()
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code < 500:
+                    raise AIProviderError(
+                        f"Client error {exc.response.status_code} on {path}"
+                    ) from exc
+                last_error = exc
+                if attempt + 1 < attempts:
+                    time.sleep(_RETRY_BACKOFF_S * (attempt + 1))
             except httpx.HTTPError as exc:
                 last_error = exc
                 if attempt + 1 < attempts:

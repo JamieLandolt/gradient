@@ -95,8 +95,11 @@ def _bearer_token(request: Request) -> str:
 def get_current_user(request: Request) -> AuthUser:
     """FastAPI dependency: the authenticated user from the Supabase JWT."""
     settings: Settings = request.app.state.settings
-    claims = decode_token(_bearer_token(request), settings)
-    user_id = claims.get("sub")
-    if not user_id:
-        raise UnauthorizedError("Token has no subject")
-    return AuthUser(id=user_id, email=claims.get("email"))
+    try:
+        claims = decode_token(_bearer_token(request), settings)
+        user_id = claims.get("sub")
+        if not user_id:
+            raise UnauthorizedError("Token has no subject")
+        return AuthUser(id=user_id, email=claims.get("email"))
+    except Exception:
+        raise

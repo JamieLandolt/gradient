@@ -52,7 +52,7 @@ class TrackingService:
                 "final_percent": request.get("final_percent"),
             },
         )
-        return self._require_enrolment(user_id, created["id"])
+        return self.require_enrolment(user_id, created["id"])
 
     def update_enrolment(
         self, user_id: str, enrolment_id: int, values: dict[str, Any]
@@ -63,7 +63,7 @@ class TrackingService:
         updated = self._students.update_enrolment(user_id, enrolment_id, clean)
         if updated is None:
             raise NotFoundError("Enrolment not found")
-        return self._require_enrolment(user_id, enrolment_id)
+        return self.require_enrolment(user_id, enrolment_id)
 
     def remove_enrolment(self, user_id: str, enrolment_id: int) -> None:
         if not self._students.delete_enrolment(user_id, enrolment_id):
@@ -122,7 +122,7 @@ class TrackingService:
 
     # ── Calculations ──────────────────────────────────────────────────────
     def standing(self, user_id: str, enrolment_id: int) -> dict[str, Any]:
-        enrolment = self._require_enrolment(user_id, enrolment_id)
+        enrolment = self.require_enrolment(user_id, enrolment_id)
         rows = self.assessment_rows(user_id, enrolment)
         if not rows:
             raise ValidationFailedError(
@@ -150,7 +150,7 @@ class TrackingService:
         target_grade: int,
         what_if_scores: dict[str, float],
     ) -> RequiredMarksResult:
-        enrolment = self._require_enrolment(user_id, enrolment_id)
+        enrolment = self.require_enrolment(user_id, enrolment_id)
         rows = self.assessment_rows(user_id, enrolment)
         if not rows:
             raise ValidationFailedError(
@@ -210,7 +210,7 @@ class TrackingService:
             )
         return result
 
-    def _require_enrolment(self, user_id: str, enrolment_id: int) -> dict[str, Any]:
+    def require_enrolment(self, user_id: str, enrolment_id: int) -> dict[str, Any]:
         enrolment = self._students.get_enrolment(user_id, enrolment_id)
         if enrolment is None:
             raise NotFoundError("Enrolment not found")

@@ -80,7 +80,7 @@ def get_settings() -> Settings:
     """Load settings once; raises a validation error listing missing variables."""
     try:
         return Settings()
-    except Exception as exc:  # re-raise with a friendlier hint
+    except Exception as exc:
         raise RuntimeError(
             "Configuration error — check backend/.env against .env.example: "
             f"{exc}"

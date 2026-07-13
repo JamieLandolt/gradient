@@ -102,6 +102,10 @@ def validate_items(items: list[AssessmentItem] | tuple[AssessmentItem, ...]) -> 
             f"Assessment weights must sum to 100, got {total_weight:g}"
         )
 
+    names = [item.name for item in items]
+    if len(names) != len(set(names)):
+        raise InvalidAssessmentStructureError("Duplicate assessment item names are not allowed")
+
     for item in items:
         if item.weight < 0:
             raise InvalidAssessmentStructureError(f"'{item.name}' has a negative weight")

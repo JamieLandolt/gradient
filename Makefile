@@ -5,14 +5,21 @@ PYTHON := python3
 BACKEND := backend
 FRONTEND := frontend
 VENV := $(BACKEND)/.venv
-PIP := $(VENV)/bin/pip
-PY := $(VENV)/bin/python
+
+# Cross-platform venv binary directory
+ifeq ($(OS),Windows_NT)
+	VENV_BIN := $(VENV)/Scripts
+else
+	VENV_BIN := $(VENV)/bin
+endif
+
+PY := $(VENV_BIN)/python
 
 # ── Install ─────────────────────────────────────────────────────────────────
 backend-install:
 	$(PYTHON) -m venv $(VENV)
-	$(PIP) install --upgrade pip
-	$(PIP) install -r $(BACKEND)/requirements.txt
+	$(PY) -m pip install --upgrade pip
+	$(PY) -m pip install -r $(BACKEND)/requirements.txt
 
 frontend-install:
 	cd $(FRONTEND) && npm install
@@ -21,14 +28,14 @@ install: backend-install frontend-install
 
 # ── Dev servers ─────────────────────────────────────────────────────────────
 backend-dev:
-	cd $(BACKEND) && .venv/bin/uvicorn app.main:app --reload --port 8000
+	cd $(BACKEND) && $(PY) -m uvicorn app.main:app --reload --port 8000
 
 frontend-dev:
 	cd $(FRONTEND) && npm run dev
 
 # ── Tests & quality gate ────────────────────────────────────────────────────
 backend-test:
-	cd $(BACKEND) && .venv/bin/python -m pytest --cov=app --cov-report=term-missing
+	cd $(BACKEND) && $(PY) -m pytest --cov=app --cov-report=term-missing
 
 frontend-test:
 	cd $(FRONTEND) && npx vitest run --coverage
@@ -36,7 +43,7 @@ frontend-test:
 test: backend-test frontend-test
 
 lint:
-	cd $(BACKEND) && .venv/bin/python -m ruff check app tests
+	cd $(BACKEND) && $(PY) -m ruff check app tests
 	cd $(FRONTEND) && npm run lint
 
 # Full local CI gate — run before every phase PR

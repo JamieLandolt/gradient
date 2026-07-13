@@ -44,9 +44,9 @@ def _load_robots(user_agent: str) -> urllib.robotparser.RobotFileParser:
     parser.set_url(f"{CATALOGUE_BASE}/robots.txt")
     try:
         parser.read()
-    except Exception:
-        # No reachable robots.txt → default to allow (we still throttle + cap volume).
-        parser.allow_all = True
+    except (OSError, httpx.HTTPError):
+        # No reachable robots.txt → default to disallow (respectful crawling).
+        parser.allow_all = False
     return parser
 
 

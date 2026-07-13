@@ -30,7 +30,7 @@ class IngestionService:
         )
         try:
             extracted = self._providers.extraction.extract(payload)
-        except ValueError as exc:
+        except (ValueError, RuntimeError) as exc:
             self._repo.update_job(job["id"], {"status": "failed", "error": str(exc)})
             raise ValidationFailedError(f"Extraction failed: {exc}") from exc
 

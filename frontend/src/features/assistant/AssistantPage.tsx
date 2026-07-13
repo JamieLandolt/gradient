@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import type { FormEvent } from 'react'
 
 import { ApiError, apiClient, streamPost } from '../../lib/apiClient'
@@ -20,6 +20,14 @@ export function AssistantPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
+
+  // Cancel any in-flight stream when the component unmounts.
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort()
+    }
+  }, [])
 
   const current = (enrolments ?? []).filter((e) => e.status === 'in_progress')
   const lastMessage = messages[messages.length - 1]
@@ -48,13 +56,18 @@ export function AssistantPage() {
     ])
     setIsStreaming(true)
 
+    const controller = new AbortController()
+    abortRef.current = controller
+
     try {
       await streamPost(
         '/assistant/ask/stream',
         { question: trimmed, enrolment_id: enrolmentId ? Number(enrolmentId) : null },
         appendToAssistant,
+        controller.signal,
       )
     } catch (err) {
+      if (controller.signal.aborted) return
       setError(
         err instanceof ApiError ? err.message : 'The assistant could not answer just now.',
       )
@@ -64,7 +77,10 @@ export function AssistantPage() {
         return last && last.role === 'assistant' && last.text === '' ? prev.slice(0, -1) : prev
       })
     } finally {
-      setIsStreaming(false)
+      if (!controller.signal.aborted) {
+        setIsStreaming(false)
+      }
+      abortRef.current = null
     }
   }
 

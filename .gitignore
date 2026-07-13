@@ -27,6 +27,12 @@ supabase/.branches/
 .DS_Store
 .idea/
 .vscode/
+.trae/
+
+# IDE & local debug
+.dbg/
+*.ndjson
+*.log
 
 # Source documents
 Gradient_SRS_Master.docx
@@ -37,6 +43,9 @@ Gradient_SRS_Master.pdf
 
 # Claude Code local settings
 .claude/
+
+# 本地依赖包
+Gradinet依赖包/
 
 # Cached UQ course HTML (fetched by scripts/import_uq_catalogue.py)
 seed/data/uq_html_cache/

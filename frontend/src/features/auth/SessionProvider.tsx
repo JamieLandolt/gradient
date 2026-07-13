@@ -30,8 +30,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setIsLoading(false)
     })
 
-    const { data: subscription } = supabase.auth.onAuthStateChange((_event, newSession) => {
+    const { data: subscription } = supabase.auth.onAuthStateChange((event, newSession) => {
       setSession(newSession)
+
+      if (event === 'TOKEN_REFRESHED' && newSession === null) {
+        // Refresh token expired – force re-login.
+        alert('Your session has expired. Please log in again.')
+        if (window.location.pathname !== '/login') {
+          window.location.href = '/login'
+        }
+      }
     })
     return () => subscription.subscription.unsubscribe()
   }, [])
