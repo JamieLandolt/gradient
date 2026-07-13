@@ -62,7 +62,11 @@ export function setAccessTokenProvider(provider: AccessTokenProvider): void {
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = await tokenProvider()
   const headers = new Headers(init.headers)
-  headers.set('Content-Type', 'application/json')
+  // Let the browser set multipart boundaries for FormData uploads; only JSON
+  // bodies need an explicit content type.
+  if (!(init.body instanceof FormData)) {
+    headers.set('Content-Type', 'application/json')
+  }
   if (token) {
     headers.set('Authorization', `Bearer ${token}`)
   }
@@ -86,6 +90,8 @@ export const apiClient = {
   get: <T>(path: string) => request<T>(path),
   post: <T>(path: string, payload?: unknown) =>
     request<T>(path, { method: 'POST', body: payload === undefined ? undefined : JSON.stringify(payload) }),
+  postForm: <T>(path: string, form: FormData) =>
+    request<T>(path, { method: 'POST', body: form }),
   put: <T>(path: string, payload?: unknown) =>
     request<T>(path, { method: 'PUT', body: payload === undefined ? undefined : JSON.stringify(payload) }),
   patch: <T>(path: string, payload?: unknown) =>

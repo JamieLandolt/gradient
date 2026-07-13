@@ -6,11 +6,14 @@ version (FR-3.5.6) and must be curator-verified before driving projections
 (FR-3.5.3).
 """
 
+import logging
 from typing import Any
 
 from app.core.errors import NotFoundError, ValidationFailedError
 from app.providers.factory import ProviderBundle
 from app.repositories.ingestion import IngestionRepository
+
+logger = logging.getLogger(__name__)
 
 
 class IngestionService:
@@ -18,33 +21,61 @@ class IngestionService:
         self._repo = repo
         self._providers = providers
 
-    def submit(
+    def create_job(
         self, user_id: str, source_type: str, payload: str, source_ref: str = ""
     ) -> dict[str, Any]:
+        """Persist a ``queued`` job and return it immediately (FR-3.5.3).
+
+        The heavy LLM extraction runs off the request path in
+        :meth:`run_extraction` (FastAPI ``BackgroundTasks``); the client polls
+        ``GET /ingestion/jobs/{id}`` for the terminal status (NFR-5.1.5).
+        """
         if not payload.strip():
             raise ValidationFailedError("Provide the course profile text to extract")
-        job = self._repo.create_job(
+        return self._repo.create_job(
             user_id,
             {"course_code": "", "source_type": source_type,
              "source_ref": source_ref, "payload": payload, "status": "queued"},
         )
-        try:
-            extracted = self._providers.extraction.extract(payload)
-        except ValueError as exc:
-            self._repo.update_job(job["id"], {"status": "failed", "error": str(exc)})
-            raise ValidationFailedError(f"Extraction failed: {exc}") from exc
 
+    def run_extraction(
+        self, job_id: int, payload: str, source_type: str, source_ref: str = ""
+    ) -> None:
+        """Extract, draft, and embed off the request path; flip the job to
+        ``extracted`` or ``failed``.
+
+        Runs as a background task, so it must never propagate: any failure is
+        recorded on the job (``status='failed'``, ``error``) for the poller.
+        """
+        try:
+            self._extract_and_draft(job_id, payload, source_type, source_ref)
+        except Exception as exc:  # noqa: BLE001 — background task must not propagate
+            self._record_failure(job_id, exc)
+
+    def _record_failure(self, job_id: int, exc: Exception) -> None:
+        """Best-effort: flip the job to ``failed``. If even this write raises
+        (e.g. the DB is down — the very cause of the failure), swallow and log so
+        the background task still never propagates."""
+        try:
+            self._repo.update_job(job_id, {"status": "failed", "error": str(exc)})
+        except Exception:  # noqa: BLE001 — nothing left to do but log
+            logger.exception("Could not record failure for ingestion job %s", job_id)
+
+    def _extract_and_draft(
+        self, job_id: int, payload: str, source_type: str, source_ref: str
+    ) -> None:
+        extracted = self._providers.extraction.extract(payload)
         course = self._repo.create_course_if_missing(extracted)
 
         cached = self._repo.find_profile_version(course["id"], extracted.version_label)
         if cached is not None:
             # Extraction runs once per profile version and is reused (FR-3.5.6).
-            updated = self._repo.update_job(
-                job["id"],
+            self._repo.update_job(
+                job_id,
                 {"status": "extracted", "course_code": course["code"],
                  "profile_version_id": cached["id"]},
             )
-            return {**updated, "cached": True, "warnings": []}
+            return
 
         version = self._repo.create_draft_version(
             course["id"], extracted,
@@ -62,12 +93,11 @@ class IngestionService:
             ),
             self._providers.embeddings.model_name,
         )
-        updated = self._repo.update_job(
-            job["id"],
+        self._repo.update_job(
+            job_id,
             {"status": "extracted", "course_code": course["code"],
              "profile_version_id": version["id"]},
         )
-        return {**updated, "cached": False, "warnings": list(extracted.warnings)}
 
     def get_job(self, user_id: str, job_id: int) -> dict[str, Any]:
         job = self._repo.get_job(user_id, job_id)

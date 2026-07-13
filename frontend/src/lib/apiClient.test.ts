@@ -51,6 +51,23 @@ test('serialises POST payloads as JSON', async () => {
   const init = fetchMock.mock.calls[0][1] as RequestInit
   expect(init.method).toBe('POST')
   expect(JSON.parse(init.body as string)).toEqual({ courseCode: 'COMP1000' })
+  const headers = new Headers(init.headers)
+  expect(headers.get('Content-Type')).toBe('application/json')
+})
+
+test('postForm sends FormData without forcing a JSON content type', async () => {
+  const fetchMock = mockFetchOnce(200, { success: true, data: null, error: null, meta: null })
+  const form = new FormData()
+  form.append('file', new File(['x'], 'ecp.pdf', { type: 'application/pdf' }))
+
+  await apiClient.postForm('/ingestion/uploads', form)
+
+  const init = fetchMock.mock.calls[0][1] as RequestInit
+  expect(init.method).toBe('POST')
+  expect(init.body).toBeInstanceOf(FormData)
+  // Must be absent so the browser can set the multipart boundary itself.
+  const headers = new Headers(init.headers)
+  expect(headers.get('Content-Type')).toBeNull()
 })
 
 test('wraps network failures in a friendly ApiError', async () => {

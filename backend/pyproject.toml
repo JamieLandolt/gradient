@@ -16,5 +16,6 @@ target-version = "py311"
 select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.ruff.lint.flake8-bugbear]
-# FastAPI's dependency-injection idiom: Depends() in parameter defaults is intended.
-extend-immutable-calls = ["fastapi.Depends"]
+# FastAPI's dependency-injection idiom: Depends()/File()/Form() in parameter
+# defaults is intended, not a mutable-default bug.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.File", "fastapi.Form"]

@@ -56,8 +56,9 @@
 
 | Method | Path | Description |
 | --- | --- | --- |
-| POST | `/ingestion/jobs` | Submit ECP text → extraction → draft version (cached per version) |
-| GET | `/ingestion/jobs/{id}` | Job status (own jobs only) |
+| POST | `/ingestion/jobs` | Submit ECP **text** → returns `status:"queued"`; extraction runs in the background (poll the job) |
+| POST | `/ingestion/uploads` | Submit an ECP **PDF/.txt** (multipart `file`, optional `source_ref`) → parsed locally → same queued pipeline |
+| GET | `/ingestion/jobs/{id}` | Poll job status (own jobs only): `queued` → `extracted` \| `failed` |
 | GET | `/curator/profile-versions` | Draft queue (curator role) |
 | POST | `/curator/profile-versions/{id}/verify` · `/reject` | Review actions (curator role) |
 

@@ -33,8 +33,15 @@ def make_curator_client():
     return client, students
 
 
+def _poll_job(client, job_id):
+    """Fetch a job after submission. Under TestClient the BackgroundTasks run
+    inline before the POST returns, so a single GET reflects the terminal state
+    the real client reaches by polling (FR-3.5.3 / NFR-5.1.5)."""
+    return client.get(f"/api/v1/ingestion/jobs/{job_id}").json()["data"]
+
+
 class TestIngestion:
-    def test_submit_creates_draft_version(self):
+    def test_submit_queues_then_extracts_a_draft_version(self):
         client, _ = make_curator_client()
         payload = (SAMPLES / "COMP2140_2026S2.txt").read_text()
 
@@ -43,28 +50,49 @@ class TestIngestion:
         )
 
         assert response.status_code == 201
-        job = response.json()["data"]
+        queued = response.json()["data"]
+        assert queued["status"] == "queued"
+        assert queued["profile_version_id"] is None
+
+        job = _poll_job(client, queued["id"])
         assert job["status"] == "extracted"
-        assert job["cached"] is False
+        assert job["course_code"] == "COMP2140"
 
         drafts = client.get("/api/v1/curator/profile-versions").json()["data"]
         assert len(drafts) == 1
         assert drafts[0]["version_label"] == "2026S2"
 
-    def test_resubmission_is_cached_per_version(self):
+    def test_resubmission_reuses_the_same_version(self):
         client, _ = make_curator_client()
         payload = (SAMPLES / "COMP2140_2026S2.txt").read_text()
 
-        first = client.post(
+        first_id = client.post(
             "/api/v1/ingestion/jobs", json={"source_type": "text", "payload": payload}
-        ).json()["data"]
-        second = client.post(
+        ).json()["data"]["id"]
+        second_id = client.post(
             "/api/v1/ingestion/jobs", json={"source_type": "text", "payload": payload}
-        ).json()["data"]
+        ).json()["data"]["id"]
 
-        assert first["cached"] is False
-        assert second["cached"] is True
-        assert second["profile_version_id"] == first["profile_version_id"]
+        first = _poll_job(client, first_id)
+        second = _poll_job(client, second_id)
+        assert first["profile_version_id"] == second["profile_version_id"]
+        # Extraction runs once per profile version (FR-3.5.6): no duplicate draft.
+        drafts = client.get("/api/v1/curator/profile-versions").json()["data"]
+        assert len(drafts) == 1
+
+    def test_bad_payload_marks_the_job_failed(self):
+        client, _ = make_curator_client()
+
+        queued = client.post(
+            "/api/v1/ingestion/jobs",
+            json={"source_type": "text", "payload": "no course code here at all"},
+        ).json()["data"]
+        assert queued["status"] == "queued"
+
+        job = _poll_job(client, queued["id"])
+        assert job["status"] == "failed"
+        assert job["error"]
+        assert client.get("/api/v1/curator/profile-versions").json()["data"] == []
 
     def test_students_cannot_use_curator_endpoints(self):
         client, _, students = build_client(user=ALICE)
@@ -80,9 +108,10 @@ class TestIngestion:
     def test_verify_flips_status(self):
         client, _ = make_curator_client()
         payload = (SAMPLES / "COMP2140_2026S2.txt").read_text()
-        job = client.post(
+        queued = client.post(
             "/api/v1/ingestion/jobs", json={"source_type": "text", "payload": payload}
         ).json()["data"]
+        job = _poll_job(client, queued["id"])
 
         verified = client.post(
             f"/api/v1/curator/profile-versions/{job['profile_version_id']}/verify"

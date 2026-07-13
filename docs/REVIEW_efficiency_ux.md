@@ -32,11 +32,12 @@ are a prioritised backlog. Severity: **P1** ship-blocking-ish, **P2** should-fix
    are never cut off).
 6. **Top-level error boundary (P2) — ✅ fixed.** A render throw previously produced a blank
    white screen. Added `ErrorBoundary` around the router with a friendly reload card.
-7. **Sync-in-request ECP extraction (P1) — deferred to Phase 13-cont.** `IngestionService.submit`
-   runs the LLM extraction inline in the POST handler (can exceed the NFR-5.1.5 15s budget and
-   ties up a worker). *Fix:* FastAPI `BackgroundTasks`; return `queued`; `ImportPage` polls
-   `GET /ingestion/jobs/{id}` (needs a client poll loop added — it currently reads the terminal
-   job once).
+7. **Sync-in-request ECP extraction (P1) — ✅ fixed in Phase 13-cont.** `IngestionService.submit`
+   ran the LLM extraction inline in the POST handler (could exceed the NFR-5.1.5 15s budget and tie
+   up a worker). Split into `create_job` (returns `queued` immediately) + `run_extraction` (FastAPI
+   `BackgroundTasks`; flips the job to `extracted`/`failed`, never propagates); `ImportPage` now
+   polls `GET /ingestion/jobs/{id}` via a TanStack-Query `refetchInterval` that stops on terminal
+   status.
 8. **No backend rate limiting (P2).** The unauthenticated `/search/courses` and the auth
    endpoints are unbounded. *Fix (Phase 16):* slowapi / a reverse-proxy limiter.
 
@@ -53,9 +54,10 @@ are a prioritised backlog. Severity: **P1** ship-blocking-ish, **P2** should-fix
     Converted to a retrying `useQuery`, rendered inline with loading/error/Hide feedback.
 12. **Thin AI empty-states (P3) — partly ✅.** Recommendations now shows a "no matches" empty
     state. Search already had one; a shared loading/empty/error pattern would reduce drift.
-13. **ECP file upload (P2) — deferred to Phase 13-cont.** Import is paste-only; ECPs are PDFs.
-    Add a file input + a backend `upload` path (pypdf), wiring the already-defined
-    `source_type:"upload"`.
+13. **ECP file upload (P2) — ✅ fixed in Phase 13-cont.** Import was paste-only; ECPs are PDFs.
+    Added `POST /ingestion/uploads` (multipart) + `app/ingestion/pdf.py` (`pypdf`) and an
+    `<input type="file" accept=".pdf,.txt">` on `ImportPage`, wiring the `source_type:"upload"`
+    path. Text is parsed locally then queued through the same async extraction pipeline.
 
 ## Accessibility (WCAG 2.2 AA spot-check)
 
@@ -68,11 +70,12 @@ are a prioritised backlog. Severity: **P1** ship-blocking-ish, **P2** should-fix
 
 ## Testing gaps (see Phase 13 tests)
 
-16. **✅ added:** `uq_fetcher` robots/throttle/cache tests; a `CourseDetailPage` RTL test.
+16. **✅ added:** `uq_fetcher` robots/throttle/cache tests; a `CourseDetailPage` RTL test; a
+    Planner RTL smoke test; `ImportPage` paste-poll + file-upload tests (P13-cont); `test_pdf.py`
+    (real minimal-PDF round-trip); ingestion async-contract + upload API tests.
 17. **Deferred:** a real-Postgres/pgvector integration test (the `match_courses` RPC + 1024-dim
-    column are only exercised by an in-memory cosine fake), `ImportPage` upload/poll tests, and
-    Planner/Recommendations RTL. Recommend gating the pgvector test on a `GRADIENT_TEST_DB` env
-    var so the mock CI stays green.
+    column are only exercised by an in-memory cosine fake), and Recommendations RTL. Recommend
+    gating the pgvector test on a `GRADIENT_TEST_DB` env var so the mock CI stays green.
 
 ## Ops
 
@@ -83,8 +86,8 @@ are a prioritised backlog. Severity: **P1** ship-blocking-ish, **P2** should-fix
 ---
 
 ### Prioritised backlog after this phase
-1. Async ECP extraction + `ImportPage` polling (P1, item 7).
-2. ECP PDF upload (P2, item 13).
+1. ~~Async ECP extraction + `ImportPage` polling (P1, item 7).~~ ✅ done (P13-cont).
+2. ~~ECP PDF upload (P2, item 13).~~ ✅ done (P13-cont).
 3. `get_verified_profile` memoisation / batch (P2, item 2).
 4. Real-pgvector integration test (item 17).
 5. Rate limiting + focus-visible + contrast audit (Phase 16).
