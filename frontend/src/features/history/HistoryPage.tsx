@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 
+import { CourseSearchSelect } from '../../components/CourseSearchSelect'
 import { ApiError, apiClient } from '../../lib/apiClient'
 import type { Course, EnrolmentSummary } from '../../types/api'
 
@@ -45,18 +46,12 @@ function TransferForm({ onDone }: { onDone: () => void }) {
 
   return (
     <form onSubmit={handleSubmit} className="inline-form" aria-label="Add past course">
-      <select
-        aria-label="Course"
+      <CourseSearchSelect
+        id="history-course"
+        courses={courses ?? []}
         value={courseCode}
-        onChange={(e) => setCourseCode(e.target.value)}
-      >
-        <option value="">Choose a course…</option>
-        {(courses ?? []).map((course) => (
-          <option key={course.code} value={course.code}>
-            {course.code} — {course.title}
-          </option>
-        ))}
-      </select>
+        onChange={setCourseCode}
+      />
       <input
         aria-label="Year completed"
         type="number"

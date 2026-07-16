@@ -3,6 +3,7 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 
+import { CourseSearchSelect } from '../../components/CourseSearchSelect'
 import { ApiError, apiClient } from '../../lib/apiClient'
 import type { Course, EnrolmentSummary, GpaSummary } from '../../types/api'
 
@@ -98,18 +99,12 @@ function AddCourseForm({ onDone }: { onDone: () => void }) {
 
   return (
     <form onSubmit={handleSubmit} className="inline-form" aria-label="Add course">
-      <select
-        aria-label="Course"
+      <CourseSearchSelect
+        id="dashboard-course"
+        courses={courses ?? []}
         value={courseCode}
-        onChange={(e) => setCourseCode(e.target.value)}
-      >
-        <option value="">Choose a course…</option>
-        {(courses ?? []).map((course) => (
-          <option key={course.code} value={course.code}>
-            {course.code} — {course.title}
-          </option>
-        ))}
-      </select>
+        onChange={setCourseCode}
+      />
       <input
         aria-label="Year"
         type="number"

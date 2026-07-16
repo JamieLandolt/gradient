@@ -214,11 +214,88 @@ th {
 .stacked-form label { display: flex; flex-direction: column; gap: 0.3rem; font-weight: 500; }
 .inline-form { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; margin: 1rem 0 1.4rem; }
 
+/* ── Auth pages ──
+   The class was in the markup but had no rules at all, so login sat hard against
+   the top-left. Centre the card in the viewport below the header/banner. */
+.auth-page {
+  min-height: calc(100vh - 14rem);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  gap: 0.4rem;
+}
+.auth-page h1 { margin-bottom: 0.6rem; }
+/* The heading's underline motif is drawn from the left elsewhere; centre it here. */
+.auth-page h1::after { margin-left: auto; margin-right: auto; }
+.auth-page .stacked-form {
+  width: 100%;
+  max-width: 22rem;
+  text-align: left;
+  padding: 1.6rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.auth-page .stacked-form button { margin-top: 0.4rem; }
+
+/* ── Course search (replaces a 35-option dropdown) ── */
+.course-search { position: relative; display: inline-block; min-width: 20rem; }
+.course-search-input { width: 100%; }
+.course-search-clear {
+  position: absolute;
+  right: 0.4rem;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 0 0.45rem;
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 1.15rem;
+  line-height: 1;
+}
+.course-search-clear:hover {
+  transform: translateY(-50%);
+  box-shadow: none;
+  filter: none;
+  color: var(--text);
+}
+.course-search-results {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 0.25rem;
+  list-style: none;
+  max-height: 17rem;
+  overflow-y: auto;
+  background: var(--surface-raised, var(--surface));
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+.course-search-option {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.course-search-option.is-active { background: rgba(139, 92, 246, 0.22); }
+.course-search-option[aria-selected='true'] { border-left: 2px solid var(--accent); }
+.course-search-code { font-family: var(--mono); font-size: 0.9rem; color: var(--text); }
+.course-search-title { font-size: 0.82rem; color: var(--muted); }
+.course-search-empty { padding: 0.6rem; color: var(--muted); font-size: 0.88rem; }
+
 input, select, textarea {
-  padding: 0.5rem 0.65rem;
+  padding: 0.62rem 0.8rem;
   border: 1px solid var(--border-strong);
   border-radius: 6px;
-  font-size: 0.95rem;
+  font-size: 1rem;
   background: var(--surface);
   color: var(--text);
   transition: border-color 160ms ease, box-shadow 160ms ease;
@@ -231,12 +308,13 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 input[type='number'] { font-family: var(--mono); }
 
 button {
-  padding: 0.5rem 1.05rem;
+  /* Track the input height so controls sit level on an inline form. */
+  padding: 0.62rem 1.15rem;
   border: none;
   border-radius: 6px;
   background: linear-gradient(135deg, var(--accent-deep), var(--accent));
   color: white;
-  font-size: 0.95rem;
+  font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
   transition: transform 160ms ease, box-shadow 160ms ease, filter 160ms ease;
