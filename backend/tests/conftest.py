@@ -4,8 +4,18 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.config import Settings
+from app.core.rate_limit import get_limiter
 from app.main import create_app
 from app.services import advisory
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter():
+    """The limiter is process-global (see core/rate_limit.py), so without this a
+    test suite hammering an endpoint would start 429-ing later tests."""
+    get_limiter().reset()
+    yield
+    get_limiter().reset()
 
 
 @pytest.fixture(autouse=True)

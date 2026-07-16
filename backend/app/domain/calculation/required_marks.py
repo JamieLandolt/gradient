@@ -10,7 +10,7 @@ total. What-if scores are treated as completed marks under the hypothesis.
 from collections.abc import Mapping
 from dataclasses import replace
 
-from app.domain.calculation.constants import PASS_GRADE
+from app.domain.calculation.constants import MAX_GRADE_WITH_FAILED_HURDLE, PASS_GRADE
 from app.domain.calculation.grading import grade_for_percent, resolve_cutoffs
 from app.domain.calculation.hurdles import failed_hurdles, pending_hurdles
 from app.domain.calculation.models import (
@@ -56,6 +56,15 @@ def _per_item_breakdown(
     )
 
 
+def _final_grade(
+    secured: float, grade_cutoffs: Mapping[int, float] | None, hurdle_blocked: bool
+) -> int:
+    grade = grade_for_percent(secured, grade_cutoffs)
+    if hurdle_blocked:
+        return min(grade, MAX_GRADE_WITH_FAILED_HURDLE)
+    return grade
+
+
 def compute_required_marks(
     items: list[AssessmentItem] | tuple[AssessmentItem, ...],
     target_grade: int = PASS_GRADE,
@@ -87,7 +96,20 @@ def compute_required_marks(
             hurdle_blocked=hurdle_blocked,
             hurdle_warnings=hurdle_warnings,
             final_percent=secured,
-            final_grade=grade_for_percent(secured, grade_cutoffs),
+            final_grade=_final_grade(secured, grade_cutoffs, hurdle_blocked),
+        )
+
+    # A hurdle already failed caps the course below a pass, so no amount of
+    # remaining marks can reach a passing target — the weighted arithmetic below
+    # would otherwise happily report REACHABLE (or even ALREADY_SECURED).
+    if hurdle_blocked and target_grade >= PASS_GRADE:
+        return RequiredMarksResult(
+            target_grade=target_grade,
+            target_percent=target_percent,
+            status=TargetStatus.NOT_REACHABLE,
+            required_average_percent=None,
+            hurdle_blocked=True,
+            hurdle_warnings=hurdle_warnings,
         )
 
     required_average = (target_percent - secured) / remaining_weight * 100.0

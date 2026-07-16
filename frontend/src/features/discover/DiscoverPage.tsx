@@ -74,9 +74,11 @@ function SearchSection() {
           {error}
         </p>
       )}
-      {results && (
+      {results && results.length === 0 && (
+        <p className="page-status" aria-live="polite">No matches.</p>
+      )}
+      {results && results.length > 0 && (
         <ul className="card-list" aria-live="polite">
-          {results.length === 0 && <p className="page-status">No matches.</p>}
           {results.map((result) => (
             <CourseResultCard
               key={result.course_id}

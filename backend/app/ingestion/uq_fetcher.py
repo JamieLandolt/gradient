@@ -10,6 +10,7 @@ cleaned page text for the LLM extraction provider.
 import re
 import time
 import urllib.parse
+import urllib.request
 import urllib.robotparser
 from pathlib import Path
 
@@ -19,6 +20,7 @@ CATALOGUE_BASE = "https://programs-courses.uq.edu.au"
 ECP_BASE = "https://course-profiles.uq.edu.au"
 USER_AGENT = "GradientCourseImporter/0.1 (UQ student project; non-commercial)"
 DEFAULT_THROTTLE_S = 1.5
+ROBOTS_TIMEOUT_S = 30.0
 MAX_TEXT_CHARS = 8000
 
 _SCRIPT_STYLE = re.compile(r"<(script|style)[^>]*>.*?</\1>", re.DOTALL | re.IGNORECASE)
@@ -60,11 +62,36 @@ def html_to_text(html: str) -> str:
     return text.strip()[:MAX_TEXT_CHARS]
 
 
+# When the courtesy gap was last honoured, per host. This lives at module scope
+# on purpose: fetch_ecp_text() builds a fresh fetcher per call, so an
+# instance-level timestamp started at 0.0 every time and `monotonic() - 0.0`
+# (machine uptime) always cleared the gap — the throttle never once slept and
+# DEFAULT_THROTTLE_S was dead code. Politeness to UQ is a property of the host,
+# not of one short-lived object.
+_last_fetch_by_host: dict[str, float] = {}
+
+
+def _throttle_host(host: str, throttle_s: float) -> None:
+    elapsed = time.monotonic() - _last_fetch_by_host.get(host, 0.0)
+    if host in _last_fetch_by_host and elapsed < throttle_s:
+        time.sleep(throttle_s - elapsed)
+    _last_fetch_by_host[host] = time.monotonic()
+
+
+def reset_throttle() -> None:
+    """Test seam: forget the courtesy window between cases."""
+    _last_fetch_by_host.clear()
+
+
 def _load_robots(base_url: str, user_agent: str) -> urllib.robotparser.RobotFileParser:
     parser = urllib.robotparser.RobotFileParser()
     parser.set_url(f"{base_url}/robots.txt")
     try:
-        parser.read()
+        # RobotFileParser.read() uses urlopen with NO timeout by default, so a
+        # hung robots.txt pins the worker indefinitely; both httpx clients here
+        # set 30s, so match them.
+        with urllib.request.urlopen(f"{base_url}/robots.txt", timeout=ROBOTS_TIMEOUT_S) as f:
+            parser.parse(f.read().decode("utf-8", errors="replace").splitlines())
     except Exception:
         # No reachable robots.txt → default to allow (we still throttle + cap volume).
         parser.allow_all = True
@@ -82,7 +109,6 @@ class UQCourseFetcher:
             limits=httpx.Limits(max_keepalive_connections=0),
         )
         self._robots = _load_robots(CATALOGUE_BASE, USER_AGENT)
-        self._last_fetch = 0.0
 
     def _cache_path(self, code: str) -> Path | None:
         return None if self._cache_dir is None else self._cache_dir / f"{code}.html"
@@ -96,11 +122,8 @@ class UQCourseFetcher:
         if not self._robots.can_fetch(USER_AGENT, url):
             raise RobotsDisallowedError(f"robots.txt disallows fetching {url}")
 
-        elapsed = time.monotonic() - self._last_fetch
-        if elapsed < self._throttle:
-            time.sleep(self._throttle - elapsed)
+        _throttle_host(CATALOGUE_BASE, self._throttle)
         response = self._http.get(url)
-        self._last_fetch = time.monotonic()
         response.raise_for_status()
         html = response.text
 
@@ -134,7 +157,6 @@ class ECPFetcher:
             limits=httpx.Limits(max_keepalive_connections=0),
         )
         self._robots = _load_robots(ECP_BASE, USER_AGENT)
-        self._last_fetch = 0.0
 
     def _cache_path(self, code: str) -> Path | None:
         return None if self._cache_dir is None else self._cache_dir / f"{code}.ecp.html"
@@ -152,11 +174,8 @@ class ECPFetcher:
         if not self._robots.can_fetch(USER_AGENT, url):
             raise RobotsDisallowedError(f"robots.txt disallows fetching {url}")
 
-        elapsed = time.monotonic() - self._last_fetch
-        if elapsed < self._throttle:
-            time.sleep(self._throttle - elapsed)
+        _throttle_host(ECP_BASE, self._throttle)
         response = self._http.get(url)
-        self._last_fetch = time.monotonic()
         response.raise_for_status()
         html = response.text
 

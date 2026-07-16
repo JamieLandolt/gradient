@@ -74,9 +74,50 @@ class TestNoteNodes:
         assert result.status is not PrereqStatus.MET
         assert result.requires_manual_check is True
 
-    def test_note_inside_or_with_met_branch_is_met_but_flagged(self):
+    def test_note_inside_a_satisfied_or_needs_no_manual_check(self):
+        """BEHAVIOUR CHANGE (was: met *and* flagged).
+
+        The student provably satisfies the parsed branch, so the unparsed
+        alternative is a route they don't need — there is nothing for them to
+        check. "X or permission of the course coordinator" is pervasive in UQ
+        profiles, so flagging regardless warned on a large share of every plan
+        and buried the warnings that do matter. The invariant that a note is
+        never *silently satisfied* is unaffected and still covered above: a note
+        that actually decides the outcome is always flagged.
+        """
         node = PrereqNode.any_of(COMP1000, PrereqNode.note("permission of course coordinator"))
         result = evaluate_prereq(node, completed=frozenset({"COMP1000"}))
 
         assert result.status is PrereqStatus.MET
+        assert result.requires_manual_check is False
+
+    def test_note_inside_an_unsatisfied_or_is_still_flagged(self):
+        # The note is now a live route, so it does bear on the outcome and is
+        # flagged. The status stays NOT_MET rather than NEEDS_MANUAL_CHECK
+        # because COMP1000 is identifiably outstanding — there is something
+        # concrete to tell the student, so we tell them that.
+        node = PrereqNode.any_of(COMP1000, PrereqNode.note("permission of course coordinator"))
+        result = evaluate_prereq(node, completed=frozenset())
+
+        assert result.status is PrereqStatus.NOT_MET
+        assert result.outstanding == ("COMP1000",)
+        assert result.requires_manual_check is True
+
+    def test_a_note_inside_an_and_is_always_flagged(self):
+        # Every branch of an AND must hold, so an unparsed one always matters.
+        node = PrereqNode.all_of(COMP1000, PrereqNode.note("permission of course coordinator"))
+        result = evaluate_prereq(node, completed=frozenset({"COMP1000"}))
+
+        assert result.status is not PrereqStatus.MET
+        assert result.requires_manual_check is True
+
+    def test_an_unparseable_requirement_is_not_reported_as_unmet(self):
+        """A first-year course whose real prerequisite is high-school maths has
+        nothing outstanding — saying "Not met" states something false about the
+        student's record, and contradicts the planner, which schedules it."""
+        node = PrereqNode.note("Queensland Year 12 Specialist Mathematics (Units 3 and 4)")
+        result = evaluate_prereq(node, completed=frozenset())
+
+        assert result.status is PrereqStatus.NEEDS_MANUAL_CHECK
+        assert result.outstanding == ()
         assert result.requires_manual_check is True

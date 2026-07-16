@@ -9,12 +9,17 @@ from app.api.deps import get_current_curator, get_ingestion_service
 from app.core.auth import AuthUser, get_current_user
 from app.core.envelope import success_payload
 from app.core.errors import ValidationFailedError
+from app.core.rate_limit import RateLimit, rate_limit
 from app.ingestion.pdf import extract_upload_text
 from app.schemas.api import IngestionSubmitRequest, IngestionUrlRequest
 from app.services.ingestion import IngestionService
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["ingestion"])
+
+# Each submission runs an LLM extraction (and, for from-url, a scrape of
+# UQ's site). Cap per caller so one account can't queue work in a loop.
+_SUBMIT_LIMIT = RateLimit(requests=10, window_s=60)
 
 # A paste large enough to be a real ECP but bounded so a huge upload can't tie up
 # the extraction worker (mirrors IngestionSubmitRequest.payload's max_length).
@@ -24,7 +29,10 @@ MAX_UPLOAD_CHARS = 100_000
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
 
-@router.post("/ingestion/jobs", status_code=201)
+@router.post(
+    "/ingestion/jobs", status_code=201,
+    dependencies=[Depends(rate_limit(_SUBMIT_LIMIT))],
+)
 def submit_job(
     request: IngestionSubmitRequest,
     background_tasks: BackgroundTasks,
@@ -46,7 +54,10 @@ def submit_job(
     return success_payload(job)
 
 
-@router.post("/ingestion/uploads", status_code=201)
+@router.post(
+    "/ingestion/uploads", status_code=201,
+    dependencies=[Depends(rate_limit(_SUBMIT_LIMIT))],
+)
 async def upload_job(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
@@ -87,7 +98,10 @@ async def upload_job(
     return success_payload(job)
 
 
-@router.post("/ingestion/from-url", status_code=201)
+@router.post(
+    "/ingestion/from-url", status_code=201,
+    dependencies=[Depends(rate_limit(_SUBMIT_LIMIT))],
+)
 def submit_url_job(
     request: IngestionUrlRequest,
     background_tasks: BackgroundTasks,

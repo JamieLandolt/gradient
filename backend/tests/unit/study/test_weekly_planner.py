@@ -86,3 +86,96 @@ def test_blocks_fill_slots_in_day_and_hour_order():
 
     placed = [(b.slot.day_of_week, b.slot.start_hour) for b in result.blocks]
     assert placed == sorted(placed)
+
+
+def test_the_item_due_soonest_studies_first():
+    """Hours are apportioned by priority, but slots are handed out by deadline.
+    Previously the heavier item due Sunday took every early slot and all of the
+    Monday quiz's study time landed after it had been submitted.
+    """
+    quiz_monday = item(
+        course_code="COMP3506", name="Quiz 3", weight=30.0,
+        due_date=WEEK_START.isoformat(),  # Mon 2026-08-03
+    )
+    assignment_sunday = item(
+        course_code="COMP3506", name="Assignment 2", weight=60.0,
+        due_date=date(2026, 8, 9).isoformat(),  # the following Sunday
+    )
+    one_per_day = [WeeklySlot(day_of_week=d, start_hour=18) for d in range(7)]
+
+    result = build_weekly_plan([assignment_sunday, quiz_monday], one_per_day, WEEK_START)
+
+    quiz_days = [b.slot.day_of_week for b in result.blocks if "Quiz 3" in b.focus]
+    assignment_days = [b.slot.day_of_week for b in result.blocks if "Assignment 2" in b.focus]
+
+    assert quiz_days, "the quiz should get study time"
+    # day_of_week 0 = Monday: the quiz starts on, not after, its due day.
+    assert min(quiz_days) == 0
+    # The quiz is scheduled entirely ahead of the later assignment.
+    assert max(quiz_days) < min(assignment_days)
+    # …and the heavier assignment still gets more hours, so priority is intact.
+    assert len(assignment_days) > len(quiz_days)
+
+
+def test_items_without_a_due_date_are_placed_after_dated_ones():
+    dated = item(course_code="MATH1051", name="Exam", weight=50.0,
+                 due_date=date(2026, 8, 5).isoformat())
+    undated = item(course_code="MATH1051", name="Portfolio", weight=50.0, due_date=None)
+
+    result = build_weekly_plan([undated, dated], slots(4), WEEK_START)
+
+    dated_slots = [i for i, b in enumerate(result.blocks) if "Exam" in b.focus]
+    undated_slots = [i for i, b in enumerate(result.blocks) if "Portfolio" in b.focus]
+    assert max(dated_slots) < min(undated_slots)
+
+
+def test_no_study_is_booked_after_an_items_due_date():
+    """Hours are apportioned by priority, which can hand an item more hours than
+    it has slots left before its deadline. Those hours must not be spent studying
+    for work that is already submitted."""
+    quiz = item(name="Quiz 3", weight=30.0, due_date=WEEK_START.isoformat())  # Mon
+    assignment = item(name="Assignment 2", weight=60.0, due_date=date(2026, 8, 9).isoformat())
+    one_per_day = [WeeklySlot(day_of_week=d, start_hour=18) for d in range(7)]
+
+    result = build_weekly_plan([assignment, quiz], one_per_day, WEEK_START)
+
+    quiz_days = [b.slot.day_of_week for b in result.blocks if "Quiz 3" in b.focus]
+    assert quiz_days == [0]  # Monday only — its one slot on or before the deadline
+    assert any("fit before it is due" in d.message for d in result.diagnostics)
+
+
+def test_hours_freed_by_a_deadline_go_to_someone_who_can_use_them():
+    # The quiz can only use Monday; the rest of its allotment must not idle.
+    quiz = item(name="Quiz 3", weight=30.0, due_date=WEEK_START.isoformat())
+    assignment = item(name="Assignment 2", weight=60.0, due_date=date(2026, 8, 9).isoformat())
+    one_per_day = [WeeklySlot(day_of_week=d, start_hour=18) for d in range(7)]
+
+    result = build_weekly_plan([assignment, quiz], one_per_day, WEEK_START)
+
+    assert len(result.blocks) == 7  # nothing wasted
+    assert len([b for b in result.blocks if "Assignment 2" in b.focus]) == 6
+
+
+def test_an_item_whose_deadline_has_passed_gets_no_blocks_at_all():
+    closed = item(name="Closed Quiz", weight=100.0, due_date="2026-03-09")
+    one_per_day = [WeeklySlot(day_of_week=d, start_hour=18) for d in range(7)]
+
+    result = build_weekly_plan([closed], one_per_day, WEEK_START)
+
+    assert result.blocks == ()
+    assert result.diagnostics  # and it says why
+
+
+def test_an_overdue_item_does_not_outrank_an_upcoming_one():
+    """max(0, days) clamped a past due date to "due now" — the full 4x urgency —
+    so a quiz that closed months ago got double the time of an upcoming final."""
+    closed = item(name="Week-2 Quiz", weight=10.0, due_date="2026-03-09")
+    final = item(name="Final Exam", weight=50.0, due_date="2026-08-31")
+    ten = [WeeklySlot(day_of_week=d, start_hour=h) for d in range(5) for h in (18, 19)]
+
+    result = build_weekly_plan([closed, final], ten, WEEK_START)
+
+    quiz_hours = len([b for b in result.blocks if "Week-2 Quiz" in b.focus])
+    final_hours = len([b for b in result.blocks if "Final Exam" in b.focus])
+    assert quiz_hours == 0
+    assert final_hours >= 9

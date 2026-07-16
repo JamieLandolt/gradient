@@ -12,12 +12,21 @@ scheduler in app.domain.planning.scheduler.
 """
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 
 DEFAULT_TARGET_PERCENT = 65.0
 # Urgency ramps from 4x (due this week) down to 1x (due 3+ weeks out).
 _LOOKAHEAD_WEEKS_FOR_FULL_URGENCY = 3.0
 _MAX_URGENCY = 4.0
+# An item whose due date has already passed is still plannable (it stays in the
+# list until a mark is recorded, and a tutor may not have marked it yet), but it
+# is not urgent — studying for it can't change anything. Clamping a past date to
+# "due now" gave a quiz that closed months ago the full 4x multiplier and twice
+# the study time of an upcoming final.
+_OVERDUE_URGENCY = 0.5
+
+# Sorts after any real ISO date, so undated items are placed last.
+_NO_DUE_DATE_LAST = "9999-12-31"
 
 
 @dataclass(frozen=True)
@@ -63,7 +72,10 @@ def _urgency_multiplier(due_date: str | None, week_start: date) -> float:
     if not due_date:
         return 1.0
     due = date.fromisoformat(due_date)
-    weeks_until_due = max(0, (due - week_start).days) / 7
+    days_until_due = (due - week_start).days
+    if days_until_due < 0:
+        return _OVERDUE_URGENCY
+    weeks_until_due = days_until_due / 7
     if weeks_until_due >= _LOOKAHEAD_WEEKS_FOR_FULL_URGENCY:
         return 1.0
     return _MAX_URGENCY - (
@@ -121,10 +133,31 @@ def build_weekly_plan(
     allocations = _allocate_hours([priority for priority, _ in scored], len(study_slots))
     available = sorted(study_slots, key=lambda s: (s.day_of_week, s.start_hour))
 
-    blocks: list[StudyBlock] = []
+    # Priority decides HOW MANY hours each item gets; the deadline decides WHICH
+    # slots it gets. Handing out slots in priority order instead put a heavy
+    # assignment due Sunday ahead of a quiz due Monday — and scheduled all of the
+    # quiz's study time after it had already been submitted. Items with no due
+    # date sort last; ties break on code/name so the plan stays deterministic.
+    by_deadline = sorted(
+        zip(scored, allocations, strict=True),
+        key=lambda pair: (
+            pair[0][1].due_date or _NO_DUE_DATE_LAST,
+            pair[0][1].course_code,
+            pair[0][1].name,
+        ),
+    )
+
+    slot_dates = [week_start + timedelta(days=slot.day_of_week) for slot in available]
+    claimed_by: list[RemainingAssessment | None] = [None] * len(available)
+
     diagnostics: list[WeeklyPlanDiagnostic] = []
-    cursor = 0
-    for (_priority_value, item), hours in zip(scored, allocations, strict=True):
+    wanted: dict[int, int] = {}  # index into by_deadline -> hours still unplaced
+
+    # Pass 1: each item takes the earliest free slots that fall ON OR BEFORE its
+    # due date. An item can be allotted more hours than there are slots left
+    # before its deadline; those hours are not silently spent studying for
+    # something already submitted — they go back to the pool in pass 2.
+    for index, ((_priority_value, item), hours) in enumerate(by_deadline):
         if hours == 0:
             diagnostics.append(
                 WeeklyPlanDiagnostic(
@@ -136,29 +169,72 @@ def build_weekly_plan(
                 )
             )
             continue
-        focus = _focus_text(item)
-        placed = 0
-        while placed < hours and cursor < len(available):
-            blocks.append(
-                StudyBlock(
-                    slot=available[cursor],
-                    enrolment_id=item.enrolment_id,
-                    assessment_id=item.assessment_id,
-                    custom_assessment_id=item.custom_assessment_id,
-                    focus=focus,
-                )
-            )
-            cursor += 1
-            placed += 1
+        due = date.fromisoformat(item.due_date) if item.due_date else None
+        placed = _claim_slots(claimed_by, slot_dates, item, hours, due)
         if placed < hours:
-            diagnostics.append(
-                WeeklyPlanDiagnostic(
-                    severity="info",
-                    message=(
-                        f"Only {placed} of {hours} planned hours for {item.name} "
-                        f"({item.course_code}) fit this week's study slots."
-                    ),
+            wanted[index] = hours - placed
+            if due is not None:
+                diagnostics.append(
+                    WeeklyPlanDiagnostic(
+                        severity="info",
+                        message=(
+                            f"Only {placed} of {hours} planned hours for {item.name} "
+                            f"({item.course_code}) fit before it is due on {item.due_date}."
+                        ),
+                    )
                 )
-            )
 
+    # Pass 2: an item that couldn't fit all its hours before its own deadline may
+    # still have earlier free slots it can use.
+    for index, hours_left in wanted.items():
+        (_priority_value, item) = by_deadline[index][0]
+        due = date.fromisoformat(item.due_date) if item.due_date else None
+        _claim_slots(claimed_by, slot_dates, item, hours_left, due)
+
+    # Pass 3: hours freed by a deadline (pass 1) would otherwise leave the slot
+    # idle. Offer each still-free slot to the highest-priority item that can
+    # genuinely use it — one whose deadline hasn't passed by then. A slot with no
+    # such taker stays free: better than booking study for submitted work.
+    for i, slot_date in enumerate(slot_dates):
+        if claimed_by[i] is not None:
+            continue
+        for _priority_value, item in scored:
+            due = date.fromisoformat(item.due_date) if item.due_date else None
+            if due is None or slot_date <= due:
+                claimed_by[i] = item
+                break
+
+    blocks = [
+        StudyBlock(
+            slot=available[i],
+            enrolment_id=item.enrolment_id,
+            assessment_id=item.assessment_id,
+            custom_assessment_id=item.custom_assessment_id,
+            focus=_focus_text(item),
+        )
+        for i, item in enumerate(claimed_by)
+        if item is not None
+    ]
     return WeeklyPlanResult(blocks=tuple(blocks), diagnostics=tuple(diagnostics))
+
+
+def _claim_slots(
+    claimed_by: list["RemainingAssessment | None"],
+    slot_dates: list[date],
+    item: "RemainingAssessment",
+    hours: int,
+    due: date | None,
+) -> int:
+    """Claim up to `hours` free slots for `item`, never past `due`. Returns how
+    many were claimed."""
+    placed = 0
+    for i, slot_date in enumerate(slot_dates):
+        if placed >= hours:
+            break
+        if claimed_by[i] is not None:
+            continue
+        if due is not None and slot_date > due:
+            break  # slots are chronological, so nothing later can qualify either
+        claimed_by[i] = item
+        placed += 1
+    return placed

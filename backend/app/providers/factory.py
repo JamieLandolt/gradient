@@ -56,7 +56,9 @@ def get_providers(settings: Settings) -> ProviderBundle:
     if settings.ai_provider == "mock":
         return ProviderBundle(
             extraction=MockExtractionProvider(),
-            embeddings=MockEmbeddingProvider(),
+            # Honour the configured width: the DB column is vector(EMBEDDING_DIM)
+            # and a mismatch is rejected on every write.
+            embeddings=MockEmbeddingProvider(settings.embedding_dim),
             recommendations=MockRecommendationProvider(),
             assistant=MockAssistantProvider(),
             name="mock",

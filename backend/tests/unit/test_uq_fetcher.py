@@ -17,6 +17,7 @@ from app.ingestion.uq_fetcher import (
     fetch_ecp_text,
     find_current_ecp_url,
     html_to_text,
+    reset_throttle,
 )
 
 # A trimmed excerpt of a real programs-courses.uq.edu.au offerings table (the
@@ -134,16 +135,38 @@ def test_robots_disallowed_raises_before_fetching(monkeypatch):
 
 
 def test_throttle_waits_between_live_fetches(monkeypatch):
+    """The gap must hold across SEPARATE fetcher instances.
+
+    This used to set `fetcher._last_fetch` by hand — a state production never
+    reached, because fetch_ecp_text() builds a new fetcher per call and the
+    field started at 0.0 every time. The throttle passed its test and never
+    once slept in real use.
+    """
     def handler(_request):
         return httpx.Response(200, text="ok")
 
-    fetcher = _make_fetcher(monkeypatch, handler, throttle=0.2)
-    fetcher._last_fetch = time.monotonic()  # pretend a fetch just happened
+    reset_throttle()
+    first = _make_fetcher(monkeypatch, handler, throttle=0.2)
+    first.fetch_html("COMP3506")  # first fetch: no wait
+
+    second = _make_fetcher(monkeypatch, handler, throttle=0.2)
+    start = time.monotonic()
+    second.fetch_html("COMP3506")
+
+    assert time.monotonic() - start >= 0.18  # a fresh instance still waits
+
+
+def test_the_first_fetch_of_a_process_is_not_delayed(monkeypatch):
+    def handler(_request):
+        return httpx.Response(200, text="ok")
+
+    reset_throttle()
+    fetcher = _make_fetcher(monkeypatch, handler, throttle=5.0)
 
     start = time.monotonic()
     fetcher.fetch_html("COMP3506")
 
-    assert time.monotonic() - start >= 0.18  # throttled ~0.2s before the request
+    assert time.monotonic() - start < 1.0  # nothing to be polite about yet
 
 
 # ── ECP discovery + fetch ─────────────────────────────────────────────────────

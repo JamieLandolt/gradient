@@ -145,6 +145,21 @@ async def upsert_grade(
         )
     if students.get_enrolment(user.id, enrolment_id) is None:
         raise NotFoundError("Enrolment not found")
+    # Bound the score against the item it belongs to BEFORE storing it. The
+    # calculation engine validates this on read, so a score above max_mark used
+    # to persist happily and then 422 every subsequent load of the course —
+    # leaving the page unrenderable and the bad mark unfixable through the UI.
+    max_mark = (
+        students.get_assessment_max_mark(request.assessment_id)
+        if request.assessment_id is not None
+        else students.get_custom_assessment_max_mark(user.id, request.custom_assessment_id)
+    )
+    if max_mark is None:
+        raise NotFoundError("Assessment item not found")
+    if not 0 <= request.score <= max_mark:
+        raise ValidationFailedError(
+            f"Score must be between 0 and {max_mark:g} for this item"
+        )
     grade = students.upsert_grade(
         user.id,
         enrolment_id,

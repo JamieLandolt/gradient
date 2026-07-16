@@ -62,6 +62,10 @@ class CourseStanding:
     worst_case_percent: float
     projected_percent: float | None
     projected_grade: int | None
+    # A hurdle already failed caps projected_grade below a pass; the warnings say
+    # which one, so the UI can explain a grade the weighted total doesn't justify.
+    hurdle_blocked: bool = False
+    hurdle_warnings: tuple[str, ...] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True)
@@ -110,6 +114,10 @@ def validate_items(items: list[AssessmentItem] | tuple[AssessmentItem, ...]) -> 
         if item.score is not None and not (0 <= item.score <= item.max_mark):
             raise InvalidAssessmentStructureError(
                 f"'{item.name}' score {item.score:g} is outside 0–{item.max_mark:g}"
+            )
+        if item.hurdle_min_percent is not None and not (0 <= item.hurdle_min_percent <= 100):
+            raise InvalidAssessmentStructureError(
+                f"'{item.name}' hurdle {item.hurdle_min_percent:g}% is outside 0–100"
             )
 
 

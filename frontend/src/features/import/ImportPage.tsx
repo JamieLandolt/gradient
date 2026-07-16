@@ -117,7 +117,7 @@ export function ImportPage() {
 
   // Poll the queued job until extraction finishes in the background (FR-3.5.3),
   // but stop once we hit the deadline (see MAX_POLL_MS) so the UI can recover.
-  const { data: job } = useQuery({
+  const { data: job, error: pollError } = useQuery({
     queryKey: ['ingestion-job', jobId],
     queryFn: () => apiClient.get<IngestionJob>(`/ingestion/jobs/${jobId}`),
     enabled: jobId !== null && !timedOut,
@@ -195,6 +195,15 @@ export function ImportPage() {
         </button>
       </form>
       {error && <p role="alert" className="form-error">{error}</p>}
+      {/* A failed poll used to leave `job` undefined, so the whole status panel
+          vanished and the button read "Extract" again — a submitted job looked
+          like nothing had happened. Say so instead; a later poll may recover. */}
+      {jobId !== null && !job && pollError && (
+        <p role="alert" className="form-error">
+          {pollError instanceof ApiError ? pollError.message : 'Could not read the job status'}
+          {' '}— your profile was submitted and may still be extracting.
+        </p>
+      )}
       {job && (
         <section className="result-card" aria-live="polite">
           {job.status === 'queued' && !timedOut && (

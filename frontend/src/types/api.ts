@@ -50,6 +50,9 @@ export interface Standing {
   worst_case_percent: number
   projected_percent: number | null
   projected_grade: number | null
+  /** A failed hurdle caps projected_grade below a pass; the warnings say which. */
+  hurdle_blocked: boolean
+  hurdle_warnings: string[]
   items: AssessmentRow[]
 }
 
@@ -76,7 +79,7 @@ export interface PrereqStatusRow {
   course_title: string
   requirement_kind: 'required' | 'elective'
   is_completed: boolean
-  prereq_status: 'met' | 'partially_met' | 'not_met'
+  prereq_status: 'met' | 'partially_met' | 'not_met' | 'needs_manual_check'
   outstanding: string[]
   requires_manual_check: boolean
   raw_prerequisite: string | null

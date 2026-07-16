@@ -42,6 +42,19 @@ _RECOMMEND_CACHE_TTL_S = 300.0
 _recommend_cache: dict[tuple[Any, ...], tuple[float, dict[str, Any]]] = {}
 
 
+def _forget_cached_recommendations(user_id: str) -> None:
+    """Drop every cached recommendation set for one user.
+
+    The cache holds a persisted row id. Deleting the row without clearing it
+    meant a regenerate inside the TTL handed back the id of a row that no longer
+    exists — the UI then showed a recommendation that 404s on any follow-up.
+    Keys are (user_id, interests, completed, limit), so all of the user's entries
+    go, not just the one that happens to match the current inputs.
+    """
+    for key in [k for k in _recommend_cache if k[0] == user_id]:
+        del _recommend_cache[key]
+
+
 def _tokens(text: str) -> set[str]:
     return set(_WORD.findall(text.lower()))
 
@@ -174,6 +187,7 @@ class AdvisoryService:
     def delete_recommendation(self, user_id: str, recommendation_id: int) -> None:
         if not self._artifacts.delete_recommendation(user_id, recommendation_id):
             raise NotFoundError("Recommendation not found")
+        _forget_cached_recommendations(user_id)
 
     @staticmethod
     def _shape_recommendation(row: dict[str, Any]) -> dict[str, Any]:

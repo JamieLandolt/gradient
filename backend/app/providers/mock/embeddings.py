@@ -11,38 +11,49 @@ import hashlib
 import math
 import re
 
-EMBEDDING_DIMENSIONS = 384
-MOCK_EMBEDDING_MODEL = "mock-hashed-bow-384"
+# The default matches the vector(N) column the migrations create. The mock used
+# to hardcode 384 and ignore EMBEDDING_DIM entirely, so the documented setup in
+# .env.example (AI_PROVIDER=mock + EMBEDDING_DIM=1024, the column width since
+# migration 0010) wrote vectors Postgres rejected — and the failure was swallowed
+# as a warning, leaving every ingested course silently unsearchable.
+DEFAULT_EMBEDDING_DIMENSIONS = 1024
 
 _TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
 
 
-def _token_bucket_and_sign(token: str) -> tuple[int, float]:
+def _token_bucket_and_sign(token: str, dimensions: int) -> tuple[int, float]:
     digest = hashlib.sha256(token.encode()).digest()
-    bucket = int.from_bytes(digest[:4], "big") % EMBEDDING_DIMENSIONS
+    bucket = int.from_bytes(digest[:4], "big") % dimensions
     sign = 1.0 if digest[4] % 2 == 0 else -1.0
     return bucket, sign
+
+
+def mock_embedding_model(dimensions: int) -> str:
+    return f"mock-hashed-bow-{dimensions}"
 
 
 class MockEmbeddingProvider:
     """Provider-interface wrapper around embed_text."""
 
+    def __init__(self, dimensions: int = DEFAULT_EMBEDDING_DIMENSIONS):
+        self._dimensions = dimensions
+
     @property
     def model_name(self) -> str:
-        return MOCK_EMBEDDING_MODEL
+        return mock_embedding_model(self._dimensions)
 
     def embed(self, text: str) -> list[float]:
-        return embed_text(text)
+        return embed_text(text, self._dimensions)
 
 
-def embed_text(text: str) -> list[float]:
-    """Embed text into a deterministic, L2-normalised 384-dim vector."""
-    vector = [0.0] * EMBEDDING_DIMENSIONS
+def embed_text(text: str, dimensions: int = DEFAULT_EMBEDDING_DIMENSIONS) -> list[float]:
+    """Embed text into a deterministic, L2-normalised `dimensions`-wide vector."""
+    vector = [0.0] * dimensions
     tokens = _TOKEN_PATTERN.findall(text.lower())
     if not tokens:
         return vector
     for token in tokens:
-        bucket, sign = _token_bucket_and_sign(token)
+        bucket, sign = _token_bucket_and_sign(token, dimensions)
         vector[bucket] += sign
     norm = math.sqrt(sum(component * component for component in vector))
     if norm == 0.0:

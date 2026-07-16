@@ -238,6 +238,13 @@ export function CourseDetailPage() {
             <strong>{standing.projected_grade}</strong>
           </p>
         )}
+        {/* Explains a projected grade the weighted total alone wouldn't justify. */}
+        {standing.hurdle_warnings?.map((warning) => (
+          <p key={warning} role="alert" className="hurdle-warning">
+            ⚠ {warning} A missed hurdle caps this course below a pass, whatever the
+            weighted total says.
+          </p>
+        ))}
       </section>
 
       <div className="table-scroll">

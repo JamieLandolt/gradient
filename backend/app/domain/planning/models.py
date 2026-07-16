@@ -18,6 +18,12 @@ class PrereqStatus(Enum):
     MET = "met"
     PARTIALLY_MET = "partially_met"
     NOT_MET = "not_met"
+    # Nothing identifiable is outstanding, but part of the requirement couldn't be
+    # parsed into course codes — most often a high-school prerequisite ("Queensland
+    # Year 12 Specialist Mathematics"). Reporting NOT_MET there is a false claim
+    # about the student's record: we don't know, and the scheduler treats such a
+    # course as takeable. This says exactly that, and no more.
+    NEEDS_MANUAL_CHECK = "needs_manual_check"
 
 
 @dataclass(frozen=True)

@@ -1,12 +1,20 @@
 """Request/response models for the v1 API (server-side validation, NFR-5.3.5)."""
 
 from datetime import date
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AllowInfNan, BaseModel, Field, field_validator
 
 Semester = Literal["S1", "S2", "SUMMER"]
 EnrolmentStatus = Literal["planned", "in_progress", "completed"]
+
+# Matches the ge/le bounds every other year field in this module uses.
+MIN_PLAN_YEAR = 2000
+MAX_PLAN_YEAR = 2100
+
+# A grade cut-off is a percentage. AllowInfNan(False) rejects the bare NaN and
+# Infinity literals that json.loads accepts but a percentage can never be.
+CutoffPercent = Annotated[float, Field(ge=0, le=100), AllowInfNan(False)]
 
 
 # ── Requests ─────────────────────────────────────────────────────────────────
@@ -62,7 +70,11 @@ class WhatIfRequest(BaseModel):
 
     items: list[WhatIfItem] = Field(min_length=1, max_length=50)
     target_grade: int = Field(default=4, ge=1, le=7)
-    grade_cutoffs: dict[int, float] | None = None
+    # Keys are bounded to real grades and values to real percentages: this is a
+    # public, unauthenticated endpoint, and `json.loads` happily accepts the bare
+    # NaN/Infinity literals, which sail through a plain `float` and come back out
+    # as nonsense percentages.
+    grade_cutoffs: dict[Annotated[int, Field(ge=1, le=7)], CutoffPercent] | None = None
 
 
 class SequenceRequest(BaseModel):
@@ -138,7 +150,24 @@ class AssessmentTargetsRequest(BaseModel):
 
 
 class WeeklyStudyPlanGenerateRequest(BaseModel):
+    """`week_start` must be the Monday of the week being planned.
+
+    day_of_week is defined 0=Monday and the table is unique on (user_id,
+    week_start), so a non-Monday silently plans against the wrong day numbering
+    and can leave two saved plans for one real week. Every other date field here
+    is year-bounded; this one was not.
+    """
+
     week_start: date
+
+    @field_validator("week_start")
+    @classmethod
+    def must_be_a_plausible_monday(cls, value: date) -> date:
+        if value.weekday() != 0:
+            raise ValueError("week_start must be a Monday")
+        if not (MIN_PLAN_YEAR <= value.year <= MAX_PLAN_YEAR):
+            raise ValueError(f"week_start must be between {MIN_PLAN_YEAR} and {MAX_PLAN_YEAR}")
+        return value
 
 
 class AssistantAskRequest(BaseModel):

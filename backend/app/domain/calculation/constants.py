@@ -15,5 +15,10 @@ MIN_GRADE = 1
 MAX_GRADE = 7
 PASS_GRADE = 4
 
+# A failed mandatory hurdle caps the course result below a pass regardless of the
+# weighted total — the whole point of a hurdle. Reporting the raw weighted grade
+# would tell a student who has already failed the hurdle that they passed.
+MAX_GRADE_WITH_FAILED_HURDLE = 3
+
 # Weights are validated to sum to 100 within this tolerance.
 WEIGHT_SUM_TOLERANCE = 0.01

@@ -9,6 +9,7 @@ from fastapi.responses import StreamingResponse
 from app.api.deps import get_advisory_service
 from app.core.auth import AuthUser, get_current_user
 from app.core.envelope import success_payload
+from app.core.rate_limit import RateLimit, rate_limit
 from app.providers.openai_compatible import AIProviderError
 from app.schemas.api import AssistantAskRequest, RecommendRequest
 from app.services.advisory import AdvisoryService
@@ -18,9 +19,21 @@ router = APIRouter(tags=["advisory"])
 
 _STREAM_ERROR_NOTICE = "\n\n[The assistant is unavailable right now — please try again.]"
 
+# Every route below spends money with the hosted AI provider on each call, so
+# each one is capped per caller. Search is the loosest because it is the only
+# unauthenticated one (FR-3.9.2) and is meant to feel interactive; generate/ask
+# are tighter because a single call is a full chat completion. The numbers are
+# well above any human demo pace and well below what a script could spend.
+_SEARCH_LIMIT = RateLimit(requests=30, window_s=60)
+_GENERATE_LIMIT = RateLimit(requests=10, window_s=60)
+_ASSISTANT_LIMIT = RateLimit(requests=15, window_s=60)
+
 
 # ── Recommendations (FR-3.7.x) ───────────────────────────────────────────────
-@router.post("/recommendations/generate")
+@router.post(
+    "/recommendations/generate",
+    dependencies=[Depends(rate_limit(_GENERATE_LIMIT))],
+)
 def generate_recommendations(
     request: RecommendRequest,
     user: AuthUser = Depends(get_current_user),
@@ -56,7 +69,7 @@ def delete_recommendation(
 
 
 # ── Search (FR-3.9.2: no auth needed) ────────────────────────────────────────
-@router.get("/search/courses")
+@router.get("/search/courses", dependencies=[Depends(rate_limit(_SEARCH_LIMIT))])
 def search_courses(
     q: str = Query(min_length=1, max_length=200),
     limit: int = Query(default=10, ge=1, le=50),
@@ -67,7 +80,7 @@ def search_courses(
 
 
 # ── Assistant (FR-3.9.3) ─────────────────────────────────────────────────────
-@router.post("/assistant/ask")
+@router.post("/assistant/ask", dependencies=[Depends(rate_limit(_ASSISTANT_LIMIT))])
 def ask_assistant(
     request: AssistantAskRequest,
     user: AuthUser = Depends(get_current_user),
@@ -76,7 +89,10 @@ def ask_assistant(
     return success_payload(advisory.ask(user.id, request.question, request.enrolment_id))
 
 
-@router.post("/assistant/ask/stream")
+@router.post(
+    "/assistant/ask/stream",
+    dependencies=[Depends(rate_limit(_ASSISTANT_LIMIT))],
+)
 def ask_assistant_stream(
     request: AssistantAskRequest,
     user: AuthUser = Depends(get_current_user),

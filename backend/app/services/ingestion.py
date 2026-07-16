@@ -93,7 +93,7 @@ class IngestionService:
         self, job_id: int, payload: str, source_type: str, source_ref: str
     ) -> None:
         extracted = self._providers.extraction.extract(payload)
-        course = self._repo.create_course_if_missing(extracted)
+        course, course_was_created = self._repo.create_course_if_missing(extracted)
 
         cached = self._repo.find_profile_version(course["id"], extracted.version_label)
         if cached is not None:
@@ -110,7 +110,16 @@ class IngestionService:
             source_type=source_type, source_ref=source_ref,
             provider_name=self._providers.name,
         )
-        if extracted.prerequisite_raw:
+        # Prerequisites are shared catalogue facts that the planner and the
+        # prereq-status view treat as authoritative for EVERY student. Ingestion
+        # is open to any authenticated student and the draft is unreviewed at
+        # this point, so writing them here let one submission silently rewrite a
+        # real course's prerequisites (e.g. re-submitting COMP3506 under a new
+        # version label replaced its tree globally, flipping other students from
+        # "met" to "not met"). Only a course this job just created has no
+        # dependents and is safe to populate; for anything pre-existing the tree
+        # is left alone and the curator reviews the draft.
+        if course_was_created and extracted.prerequisite_raw:
             self._repo.replace_prereq_tree(
                 course["id"], extracted.prerequisite_raw, extracted.prerequisite_tree
             )

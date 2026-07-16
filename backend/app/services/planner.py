@@ -11,6 +11,7 @@ from typing import Any
 from app.core.errors import NotFoundError, ValidationFailedError
 from app.domain.planning.dual_degree import merge_required_courses
 from app.domain.planning.models import (
+    PlannableCourse,
     PlanPreferences,
     PlanResult,
     PrereqNode,
@@ -211,10 +212,27 @@ class PlannerService:
         completed = self._students.completed_course_codes(user_id)
         all_courses = self._catalogue.list_courses()
         id_by_code = {course["code"]: course["id"] for course in all_courses}
+        units_by_code = {course["code"]: float(course["units"]) for course in all_courses}
         trees_by_id = self._catalogue.get_prereq_trees(list(id_by_code.values()))
         prereq_by_code = {code: trees_by_id.get(cid) for code, cid in id_by_code.items()}
         to_plan = _expand_with_prerequisites(merged.required - completed, completed, prereq_by_code)
-        plannable = self._catalogue.get_plannable_courses(to_plan)
+        # Compose the planner inputs from what's already loaded rather than
+        # re-reading courses and prerequisite trees for the subset. Only the
+        # offerings are still outstanding, and they batch into one query — each
+        # round-trip to the hosted database costs ~0.6s, so the duplicates were
+        # most of this request's latency.
+        planned_ids = [id_by_code[code] for code in to_plan if code in id_by_code]
+        offerings_by_id = self._catalogue.get_offering_periods_batch(planned_ids)
+        plannable = [
+            PlannableCourse(
+                code=code,
+                units=units_by_code[code],
+                offerings=offerings_by_id.get(id_by_code[code], frozenset()),
+                prereq=prereq_by_code.get(code),
+            )
+            for code in to_plan
+            if code in id_by_code
+        ]
         preferences = PlanPreferences(
             prioritise_available=prioritise_available,
             interest_codes=self._interest_codes(to_plan, interests),

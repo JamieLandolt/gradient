@@ -56,10 +56,18 @@ migrate:
 seed:
 	$(PY) seed/load_seed.py
 
-# Wake a paused free-tier Supabase project before a demo
+# Wake a paused free-tier Supabase project before a demo.
+# Queries a real table: PostgREST's root returns 401 without an Authorization
+# header even for a valid key, so `curl -sf` against it always failed and this
+# check reported "asleep" on a perfectly healthy project.
 wake:
 	@test -n "$$SUPABASE_URL" || (echo "Set SUPABASE_URL" && exit 1)
-	curl -sf "$$SUPABASE_URL/rest/v1/" -H "apikey: $$SUPABASE_ANON_KEY" > /dev/null && echo "awake"
+	@test -n "$$SUPABASE_ANON_KEY" || (echo "Set SUPABASE_ANON_KEY" && exit 1)
+	@curl -sf "$$SUPABASE_URL/rest/v1/courses?select=code&limit=1" \
+		-H "apikey: $$SUPABASE_ANON_KEY" \
+		-H "Authorization: Bearer $$SUPABASE_ANON_KEY" > /dev/null \
+		&& echo "awake" \
+		|| (echo "asleep or unreachable — open the Supabase dashboard" && exit 1)
 
 # Promote a user to curator: make promote-curator EMAIL=someone@example.com
 promote-curator:

@@ -83,6 +83,35 @@ class StudentRepository:
             if row.get("course_offerings")
         )
 
+    def get_assessment_max_mark(self, assessment_id: int) -> float | None:
+        """Max mark for one profile assessment, in a single query.
+
+        Deliberately narrow: the grade write needs to bound the incoming score
+        and nothing else, and loading the whole verified profile to learn one
+        number would cost three round-trips on the hottest write path.
+        """
+        rows = (
+            self._db.table("assessments")
+            .select("max_mark")
+            .eq("id", assessment_id)
+            .execute()
+            .data
+        )
+        return float(rows[0]["max_mark"]) if rows else None
+
+    def get_custom_assessment_max_mark(
+        self, user_id: str, assessment_id: int
+    ) -> float | None:
+        rows = (
+            self._db.table("custom_assessments")
+            .select("max_mark")
+            .eq("user_id", user_id)
+            .eq("id", assessment_id)
+            .execute()
+            .data
+        )
+        return float(rows[0]["max_mark"]) if rows else None
+
     # ── Custom assessments (FR-3.2.2) ─────────────────────────────────────
     def list_custom_assessments(self, user_id: str, enrolment_id: int) -> list[dict[str, Any]]:
         return (

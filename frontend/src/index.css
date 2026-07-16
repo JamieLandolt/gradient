@@ -341,6 +341,9 @@ a { color: var(--accent-bright); }
 .prereq-met { color: var(--ok); }
 .prereq-partially_met { color: var(--warn); }
 .prereq-not_met { color: var(--danger); }
+/* Unknown, not failing: the requirement just isn't machine-readable. Warn-
+   coloured rather than danger — nothing is known to be outstanding. */
+.prereq-needs_manual_check { color: var(--warn); }
 
 .status-badge {
   display: inline-block;

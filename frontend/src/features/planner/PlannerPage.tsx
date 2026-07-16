@@ -15,6 +15,10 @@ const PREREQ_LABELS: Record<PrereqStatusRow['prereq_status'], string> = {
   met: 'Prerequisites met',
   partially_met: 'Partially met',
   not_met: 'Not met',
+  // Nothing identifiable is outstanding — the requirement just isn't
+  // machine-readable (usually high-school maths). Saying "Not met" here would
+  // claim something false about the student's record.
+  needs_manual_check: 'Check the profile',
 }
 
 type PlanLike = Pick<PlanSequence, 'feasible' | 'semesters' | 'diagnostics'>
@@ -170,8 +174,14 @@ function PrereqStatusList() {
                 {row.outstanding.length > 0 && ` — needs ${row.outstanding.join(' or ')}`}
               </p>
             )}
-            {row.requires_manual_check && (
-              <p className="hurdle-warning">Check the course profile manually.</p>
+            {/* Don't repeat the badge: a needs_manual_check badge already says
+                exactly this. Show the note only when the badge says something
+                else (e.g. "Not met — needs X" that ALSO has an unparsed part). */}
+            {row.requires_manual_check && row.prereq_status !== 'needs_manual_check' && (
+              <p className="hurdle-warning">Part of this requirement could not be read — check the course profile.</p>
+            )}
+            {row.prereq_status === 'needs_manual_check' && row.raw_prerequisite && (
+              <p className="hurdle-warning">Requires: {row.raw_prerequisite}</p>
             )}
           </li>
         ))}

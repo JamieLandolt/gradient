@@ -74,6 +74,25 @@ class TrackingService:
         """Profile assessments (verified ECP) or the student's custom items, with scores."""
         course = enrolment["course_offerings"]["courses"]
         profile = self._catalogue.get_verified_profile(course["id"])
+        return self._rows_for_profile(user_id, enrolment, profile)
+
+    def _profile_context(
+        self, user_id: str, enrolment: dict[str, Any]
+    ) -> tuple[list[dict[str, Any]], dict[int, float] | None]:
+        """Assessment rows and grade cut-offs from a SINGLE profile read.
+
+        assessment_rows() and grade_cutoffs() each fetch the verified profile
+        independently; callers needing both would otherwise pay for the same
+        3-query profile read twice on every request.
+        """
+        course = enrolment["course_offerings"]["courses"]
+        profile = self._catalogue.get_verified_profile(course["id"])
+        rows = self._rows_for_profile(user_id, enrolment, profile)
+        return rows, (profile["grade_cutoffs"] if profile else None)
+
+    def _rows_for_profile(
+        self, user_id: str, enrolment: dict[str, Any], profile: dict[str, Any] | None
+    ) -> list[dict[str, Any]]:
         grades = self._students.list_grades(user_id, enrolment["id"])
         score_by_assessment = {
             g["assessment_id"]: g["score"] for g in grades if g["assessment_id"] is not None
@@ -123,13 +142,13 @@ class TrackingService:
     # ── Calculations ──────────────────────────────────────────────────────
     def standing(self, user_id: str, enrolment_id: int) -> dict[str, Any]:
         enrolment = self._require_enrolment(user_id, enrolment_id)
-        rows = self.assessment_rows(user_id, enrolment)
+        rows, cutoffs = self._profile_context(user_id, enrolment)
         if not rows:
             raise ValidationFailedError(
                 "This course has no assessment items yet — add them first"
             )
         try:
-            standing = compute_standing(self.to_engine_items(rows), self.grade_cutoffs(enrolment))
+            standing = compute_standing(self.to_engine_items(rows), cutoffs)
         except InvalidAssessmentStructureError as exc:
             raise ValidationFailedError(str(exc)) from exc
         return {
@@ -140,6 +159,10 @@ class TrackingService:
             "worst_case_percent": standing.worst_case_percent,
             "projected_percent": standing.projected_percent,
             "projected_grade": standing.projected_grade,
+            # Without these the UI shows a projected grade the weighted total
+            # doesn't explain, and no reason for it.
+            "hurdle_blocked": standing.hurdle_blocked,
+            "hurdle_warnings": list(standing.hurdle_warnings),
             "items": rows,
         }
 
@@ -151,7 +174,7 @@ class TrackingService:
         what_if_scores: dict[str, float],
     ) -> RequiredMarksResult:
         enrolment = self._require_enrolment(user_id, enrolment_id)
-        rows = self.assessment_rows(user_id, enrolment)
+        rows, cutoffs = self._profile_context(user_id, enrolment)
         if not rows:
             raise ValidationFailedError(
                 "This course has no assessment items yet — add them first"
@@ -160,7 +183,7 @@ class TrackingService:
             return compute_required_marks(
                 self.to_engine_items(rows),
                 target_grade=target_grade,
-                grade_cutoffs=self.grade_cutoffs(enrolment),
+                grade_cutoffs=cutoffs,
                 what_if_scores=what_if_scores or None,
             )
         except InvalidAssessmentStructureError as exc:

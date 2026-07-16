@@ -14,7 +14,16 @@ class IngestionRepository:
         self._db = db
 
     # ── Courses ───────────────────────────────────────────────────────────
-    def create_course_if_missing(self, extracted: ExtractedProfile) -> dict[str, Any]:
+    def create_course_if_missing(
+        self, extracted: ExtractedProfile
+    ) -> tuple[dict[str, Any], bool]:
+        """Return (course, was_created).
+
+        `was_created` matters for authorisation: ingestion is open to any
+        student, so a submission must never mutate catalogue facts an existing
+        course's dependents already rely on. Only a course this call brought
+        into existence is safe to attach extracted prerequisites to.
+        """
         existing = (
             self._db.table("courses")
             .select("id, code, title, units, description")
@@ -23,8 +32,8 @@ class IngestionRepository:
             .data
         )
         if existing:
-            return existing[0]
-        return (
+            return existing[0], False
+        created = (
             self._db.table("courses")
             .insert(
                 {
@@ -38,6 +47,7 @@ class IngestionRepository:
             .execute()
             .data[0]
         )
+        return created, True
 
     # ── Profile versions ──────────────────────────────────────────────────
     def find_profile_version(self, course_id: int, version_label: str) -> dict[str, Any] | None:

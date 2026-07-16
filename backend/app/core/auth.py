@@ -58,9 +58,17 @@ def _signing_key_with_retry(supabase_url: str, token: str):
         return client.get_signing_key_from_jwt(token)
 
 
+def expected_issuer(supabase_url: str) -> str:
+    return f"{supabase_url.rstrip('/')}/auth/v1"
+
+
 def decode_token(token: str, settings: Settings) -> dict:
     header = jwt.get_unverified_header(token)
     algorithm = header.get("alg", "")
+    # Pin the issuer as well as the signature: a token minted by a different
+    # Supabase project is a different tenant's, and should never authenticate
+    # here even if some future config change made its key reachable.
+    issuer = expected_issuer(settings.supabase_url)
     try:
         if algorithm in SUPPORTED_ASYMMETRIC_ALGORITHMS:
             signing_key = _signing_key_with_retry(settings.supabase_url, token)
@@ -69,6 +77,7 @@ def decode_token(token: str, settings: Settings) -> dict:
                 signing_key.key,
                 algorithms=SUPPORTED_ASYMMETRIC_ALGORITHMS,
                 audience=EXPECTED_AUDIENCE,
+                issuer=issuer,
                 leeway=CLOCK_SKEW_LEEWAY_SECONDS,
             )
         if algorithm == "HS256" and settings.supabase_jwt_secret:
@@ -77,11 +86,27 @@ def decode_token(token: str, settings: Settings) -> dict:
                 settings.supabase_jwt_secret,
                 algorithms=["HS256"],
                 audience=EXPECTED_AUDIENCE,
+                issuer=issuer,
                 leeway=CLOCK_SKEW_LEEWAY_SECONDS,
             )
         raise UnauthorizedError("Unsupported token signing algorithm")
     except jwt.PyJWTError as exc:
         raise UnauthorizedError("Invalid or expired session") from exc
+
+
+def decode_token_subject(token: str) -> str | None:
+    """The token's `sub` WITHOUT verifying it — for rate-limit bucketing only.
+
+    Never use this for authorisation. Attributing requests to a forged subject
+    only ever splits an attacker's own allowance; the fallback (peer address)
+    still applies when there's no readable subject.
+    """
+    try:
+        claims = jwt.decode(token, options={"verify_signature": False})
+    except jwt.PyJWTError:
+        return None
+    subject = claims.get("sub")
+    return subject if isinstance(subject, str) else None
 
 
 def _bearer_token(request: Request) -> str:

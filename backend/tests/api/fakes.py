@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from app.api import deps
 from app.config import Settings
 from app.core.auth import AuthUser, get_current_user
-from app.domain.planning.models import PlannableCourse, PrereqNode
+from app.domain.planning.models import PrereqNode
 from app.main import create_app
 from app.providers.factory import get_providers
 from app.services.advisory import AdvisoryService
@@ -110,20 +110,8 @@ class FakeCatalogueRepository:
     def get_program_courses(self, program_id: int):
         return list(self.program_courses.get(program_id, []))
 
-    def get_plannable_courses(self, codes: list[str]):
-        result = []
-        for code in codes:
-            course = self.courses.get(code)
-            if course:
-                result.append(
-                    PlannableCourse(
-                        code=code,
-                        units=float(course["units"]),
-                        offerings=self.get_offering_periods(course["id"]),
-                        prereq=self.prereq_trees.get(course["id"]),
-                    )
-                )
-        return result
+    def get_offering_periods_batch(self, course_ids: list[int]):
+        return {cid: self.get_offering_periods(cid) for cid in course_ids}
 
 
 class FakeStudentRepository:
@@ -195,6 +183,18 @@ class FakeStudentRepository:
             for e in self.enrolments
             if e["user_id"] == user_id and e["status"] == "completed"
         )
+
+    def get_assessment_max_mark(self, assessment_id: int):
+        for item in CSSE1001_ASSESSMENTS:
+            if item["id"] == assessment_id:
+                return float(item["max_mark"])
+        return None
+
+    def get_custom_assessment_max_mark(self, user_id: str, assessment_id: int):
+        for item in self.custom_assessments:
+            if item["user_id"] == user_id and item["id"] == assessment_id:
+                return float(item["max_mark"])
+        return None
 
     def list_custom_assessments(self, user_id: str, enrolment_id: int):
         return [
@@ -342,14 +342,14 @@ class FakeIngestionRepository:
     def create_course_if_missing(self, extracted):
         existing = self._catalogue.courses.get(extracted.course_code)
         if existing:
-            return dict(existing)
+            return dict(existing), False
         course = {
             "id": self._new_id(), "code": extracted.course_code,
             "title": extracted.course_title, "units": extracted.units,
             "description": extracted.description,
         }
         self._catalogue.courses[extracted.course_code] = course
-        return dict(course)
+        return dict(course), True
 
     def find_profile_version(self, course_id, version_label):
         for v in self.versions:
