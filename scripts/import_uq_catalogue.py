@@ -49,7 +49,11 @@ def import_course(repo: IngestionRepository, providers, fetcher: UQCourseFetcher
     payload = f"Course code: {code}\n\n{text}"
     extracted = providers.extraction.extract(payload)
 
-    course = repo.create_course_if_missing(extracted)
+    # create_course_if_missing returns (course, was_created); the flag guards
+    # untrusted student submissions from overwriting an existing course's shared
+    # facts. This bulk importer runs against authoritative UQ data with the
+    # service-role key, so it intentionally refreshes prerequisites either way.
+    course, _was_created = repo.create_course_if_missing(extracted)
     version = repo.find_profile_version(course["id"], extracted.version_label)
     if version is None:
         version = repo.create_draft_version(

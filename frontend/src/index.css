@@ -3,6 +3,11 @@
    "grade curve" motif: sharp wedges and lines that always point up-right.  */
 
 :root {
+  /* One shared column width so the header, disclaimer and page body all line
+     up on the same centred axis instead of the bars hugging the viewport edges
+     while the body sits in a narrower column. */
+  --content-max: 1020px;
+  --content-pad: 1.4rem;
   --bg: #0f0817;
   --surface: #170e23;
   --surface-raised: #1f1330;
@@ -48,18 +53,27 @@ body {
 .app-shell { min-height: 100vh; display: flex; flex-direction: column; }
 
 /* ── Header ── */
+/* The bar spans the viewport (background, border, blur); its contents are
+   centred to the shared content column so the brand and nav line up with the
+   page body below. */
 .app-header {
-  display: flex;
-  align-items: center;
-  gap: 1.5rem;
-  padding: 0.7rem 1.4rem;
+  padding: 0.7rem 0;
   background: rgba(15, 8, 23, 0.85);
   border-bottom: 1px solid var(--border);
   backdrop-filter: blur(8px);
   position: sticky;
   top: 0;
   z-index: 10;
+}
+.app-header-inner {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
   flex-wrap: wrap;
+  width: 100%;
+  max-width: var(--content-max);
+  margin: 0 auto;
+  padding: 0 var(--content-pad);
 }
 .app-header .brand {
   display: flex;
@@ -72,7 +86,7 @@ body {
   text-decoration: none;
 }
 .brand-logo { width: 26px; height: 26px; border-radius: 6px; display: block; }
-.app-header nav { display: flex; gap: 0.35rem; flex-wrap: wrap; align-items: center; }
+.app-header nav { display: flex; gap: 0.7rem; flex-wrap: wrap; align-items: center; }
 .app-header nav a {
   position: relative;
   color: var(--muted);
@@ -107,16 +121,21 @@ body {
 
 .disclaimer {
   margin: 0;
-  padding: 0.45rem 1.4rem;
+  padding: 0.45rem 0;
   background: rgba(139, 92, 246, 0.08);
+  border-bottom: 1px solid var(--border);
+}
+.disclaimer-inner {
+  margin: 0 auto;
+  max-width: var(--content-max);
+  padding: 0 var(--content-pad);
   color: var(--label);
   font-size: 0.8rem;
-  border-bottom: 1px solid var(--border);
 }
 
 .app-content {
-  padding: 1.75rem 1.4rem 3rem;
-  max-width: 1020px;
+  padding: 1.75rem var(--content-pad) 3rem;
+  max-width: var(--content-max);
   width: 100%;
   margin: 0 auto;
   animation: fade-up 320ms ease both;
@@ -200,14 +219,23 @@ th {
 .rise-bars span:nth-child(4) { background: var(--bar-4); animation-delay: 250ms; }
 .rise-bars span:nth-child(5) { background: var(--bar-5); animation-delay: 320ms; }
 
-.page-heading {
+/* Dashboard top: controls on the left, GPA summary on the right, tops aligned. */
+.dashboard-top {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   flex-wrap: wrap;
-  gap: 1.25rem;
-  margin-bottom: 0.75rem;
+  gap: 1.5rem;
+  margin-bottom: 1.4rem;
 }
+.dashboard-top-main {
+  flex: 1 1 30rem;
+  min-width: min(100%, 22rem);
+}
+/* The form already carries bottom margin from .inline-form; drop the extra top
+   so it tucks under the heading, and clear the bottom since the wrapper owns it. */
+.dashboard-top-main .inline-form { margin: 0.9rem 0 0; }
+.dashboard-top .stat-card { flex: 0 1 auto; }
 
 /* ── Forms ── */
 .stacked-form { display: flex; flex-direction: column; gap: 0.8rem; max-width: 22rem; }
@@ -752,10 +780,13 @@ textarea { width: 100%; font-family: var(--mono); font-size: 0.88rem; margin-bot
 
 /* ── Responsive ── */
 @media (max-width: 900px) {
-  .app-content { padding: 1.25rem 1rem 2.5rem; }
+  /* Shrink the shared side padding so header, disclaimer and body stay aligned. */
+  :root { --content-pad: 1rem; }
+  .app-content { padding-top: 1.25rem; padding-bottom: 2.5rem; }
 }
 @media (max-width: 640px) {
-  .app-header { gap: 0.75rem; }
+  :root { --content-pad: 0.85rem; }
+  .app-header-inner { gap: 0.75rem; }
   .nav-toggle { display: block; }
   .app-header nav {
     display: none;
@@ -771,5 +802,5 @@ textarea { width: 100%; font-family: var(--mono); font-size: 0.88rem; margin-bot
   .pref-row { flex-direction: column; align-items: stretch; }
   .semester-grid { grid-template-columns: 1fr; }
   .chat-message { max-width: 100%; }
-  .app-content { padding: 1rem 0.85rem 2.5rem; }
+  .app-content { padding-top: 1rem; padding-bottom: 2.5rem; }
 }

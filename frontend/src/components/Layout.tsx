@@ -6,10 +6,12 @@ import { useSession } from '../features/auth/SessionProvider'
 
 export function DisclaimerBanner() {
   return (
-    <p role="note" className="disclaimer">
-      Gradient's figures are estimates to support your own decisions — your course profile
-      (ECP) and official university records remain authoritative.
-    </p>
+    <div role="note" className="disclaimer">
+      <p className="disclaimer-inner">
+        Gradient's figures are estimates to support your own decisions — your course profile
+        (ECP) and official university records remain authoritative.
+      </p>
+    </div>
   )
 }
 
@@ -24,43 +26,45 @@ export function Layout() {
   return (
     <div className="app-shell">
       <header className="app-header">
-        <Link to="/" className="brand">
-          <img src={appIcon} alt="" className="brand-logo" />
-          Gradient
-        </Link>
-        <button
-          type="button"
-          className="nav-toggle"
-          aria-label="Toggle navigation"
-          aria-expanded={menuOpen}
-          aria-controls="main-nav"
-          onClick={() => setMenuOpen((open) => !open)}
-        >
-          ☰
-        </button>
-        <nav id="main-nav" aria-label="Main" className={menuOpen ? 'nav-open' : undefined}>
-          {session ? (
-            <>
-              <NavLink to="/dashboard">Dashboard</NavLink>
-              <NavLink to="/history">History</NavLink>
-              <NavLink to="/planner">Planner</NavLink>
-              <NavLink to="/study-plans">Study plans</NavLink>
-              <NavLink to="/assistant">Assistant</NavLink>
-              <NavLink to="/discover">Discover</NavLink>
-              <NavLink to="/import">Import</NavLink>
-              <NavLink to="/account">Account</NavLink>
-              <button type="button" className="link-button" onClick={() => void signOut()}>
-                Log out
-              </button>
-            </>
-          ) : (
-            <>
-              <NavLink to="/calculator">Calculator</NavLink>
-              <NavLink to="/login">Log in</NavLink>
-              <NavLink to="/register">Register</NavLink>
-            </>
-          )}
-        </nav>
+        <div className="app-header-inner">
+          <Link to="/" className="brand">
+            <img src={appIcon} alt="" className="brand-logo" />
+            Gradient
+          </Link>
+          <button
+            type="button"
+            className="nav-toggle"
+            aria-label="Toggle navigation"
+            aria-expanded={menuOpen}
+            aria-controls="main-nav"
+            onClick={() => setMenuOpen((open) => !open)}
+          >
+            ☰
+          </button>
+          <nav id="main-nav" aria-label="Main" className={menuOpen ? 'nav-open' : undefined}>
+            {session ? (
+              <>
+                <NavLink to="/dashboard">Dashboard</NavLink>
+                <NavLink to="/history">History</NavLink>
+                <NavLink to="/planner">Planner</NavLink>
+                <NavLink to="/study-plans">Study plans</NavLink>
+                <NavLink to="/assistant">Assistant</NavLink>
+                <NavLink to="/discover">Discover</NavLink>
+                <NavLink to="/import">Import</NavLink>
+                <NavLink to="/account">Account</NavLink>
+                <button type="button" className="link-button" onClick={() => void signOut()}>
+                  Log out
+                </button>
+              </>
+            ) : (
+              <>
+                <NavLink to="/calculator">Calculator</NavLink>
+                <NavLink to="/login">Log in</NavLink>
+                <NavLink to="/register">Register</NavLink>
+              </>
+            )}
+          </nav>
+        </div>
       </header>
       <DisclaimerBanner />
       <div className="app-content">

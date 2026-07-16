@@ -149,17 +149,22 @@ export function DashboardPage() {
 
   return (
     <main>
-      <div className="page-heading">
-        <h1>Dashboard</h1>
+      {/* Heading + add-course form share the left column; the GPA card sits
+          beside them (top-aligned) instead of floating in the heading row and
+          leaving the search bar stranded below it. Wraps to a single column on
+          narrow screens. */}
+      <div className="dashboard-top">
+        <div className="dashboard-top-main">
+          <h1>Dashboard</h1>
+          <AddCourseForm
+            onDone={() => {
+              void queryClient.invalidateQueries({ queryKey: ['enrolments'] })
+              void queryClient.invalidateQueries({ queryKey: ['gpa'] })
+            }}
+          />
+        </div>
         {gpa && <GpaStatCard gpa={gpa} completedGrades={completedGrades} />}
       </div>
-
-      <AddCourseForm
-        onDone={() => {
-          void queryClient.invalidateQueries({ queryKey: ['enrolments'] })
-          void queryClient.invalidateQueries({ queryKey: ['gpa'] })
-        }}
-      />
 
       {isLoading && <p className="page-status">Loading your courses…</p>}
       {!isLoading && inProgress.length === 0 && (
