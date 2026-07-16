@@ -16,7 +16,6 @@ from app.providers.openai_compatible import (
     OpenAICompatibleEmbeddingProvider,
     OpenAICompatibleExtractionProvider,
     OpenAICompatibleRecommendationProvider,
-    OpenAICompatibleStudyPlanProvider,
 )
 
 
@@ -119,27 +118,6 @@ def test_recommendation_drops_hallucinated_codes():
     assert provider.recommend(candidates, [], frozenset(), 5) == []
 
 
-# ── Study plans ──────────────────────────────────────────────────────────────
-def test_study_plan_shapes_sessions_with_sort_order():
-    reply = {"sessions": [
-        {"session_date": "2026-09-01", "duration_minutes": 90, "focus": "A1 revision",
-         "assessment_name": "A1"},
-    ]}
-    provider = OpenAICompatibleStudyPlanProvider(FakeClient(json_reply=reply))
-
-    sessions = provider.generate(
-        "COMP3506",
-        [{"name": "A1", "weight": 40, "due_date": "2026-09-11", "score": None}],
-        target_grade=6,
-        required_average_percent=73.8,
-        start_date="2026-08-20",
-    )
-
-    assert sessions[0]["sort_order"] == 0
-    assert sessions[0]["duration_minutes"] == 90
-    assert sessions[0]["assessment_name"] == "A1"
-
-
 # ── Assistant ────────────────────────────────────────────────────────────────
 def test_assistant_grounds_on_facts_and_returns_text():
     client = FakeClient(text_reply="You need about 74% on the final.")
@@ -200,7 +178,7 @@ def test_client_retries_then_raises_on_http_error():
 
     with pytest.raises(AIProviderError):
         _client_with(handler).chat_json("s", "u")
-    assert calls["n"] == 2  # ai_max_retries default 1 → 2 attempts
+    assert calls["n"] == 4  # ai_max_retries default 3 → 4 attempts
 
 
 def test_client_embed_returns_vector():

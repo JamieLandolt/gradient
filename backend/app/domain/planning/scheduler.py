@@ -116,6 +116,7 @@ def build_plan(
     max_units_per_semester: float = DEFAULT_MAX_UNITS_PER_SEMESTER,
     max_semesters: int = DEFAULT_MAX_SEMESTERS,
     preferences: PlanPreferences | None = None,
+    target_courses_per_semester: int | None = None,
 ) -> PlanResult:
     preferences = preferences or PlanPreferences()
     to_schedule = [course for course in courses if course.code not in completed]
@@ -155,7 +156,14 @@ def build_plan(
 
         entries: list[PlanEntry] = []
         used_units = 0.0
+        target_reached = False
         for course, needs_check in eligible:
+            if (
+                target_courses_per_semester is not None
+                and len(entries) >= target_courses_per_semester
+            ):
+                target_reached = True
+                break
             if used_units + course.units > max_units_per_semester:
                 continue
             entries.append(
@@ -176,6 +184,28 @@ def build_plan(
                         ),
                     )
                 )
+
+        # A target was set (full-time/part-time) but there weren't enough
+        # eligible courses to reach it this semester — distinguish that from
+        # being capped by max_units_per_semester (target_reached), so the
+        # message is only shown when it's genuinely true.
+        if (
+            target_courses_per_semester is not None
+            and not target_reached
+            and entries
+            and len(entries) < target_courses_per_semester
+        ):
+            diagnostics.append(
+                PlanDiagnostic(
+                    severity="info",
+                    message=(
+                        f"Only {len(entries)} course"
+                        f"{'s were' if len(entries) != 1 else ' was'} eligible in "
+                        f"{current.label} — you've taken everything else you're "
+                        f"currently eligible for."
+                    ),
+                )
+            )
 
         semesters.append(PlanSemester(semester=current, entries=tuple(entries)))
         for entry in entries:

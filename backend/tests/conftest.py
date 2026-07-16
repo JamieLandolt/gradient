@@ -5,6 +5,18 @@ from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.main import create_app
+from app.services import advisory
+
+
+@pytest.fixture(autouse=True)
+def _reset_recommend_cache():
+    """The recommend() cache is module-level (shared across requests within a
+    process, see advisory.py), so it must not leak between tests — otherwise a
+    cache hit here can return a stale result from a different test's isolated
+    fake database, keyed only by (user_id, interests, completed, limit)."""
+    advisory._recommend_cache.clear()
+    yield
+    advisory._recommend_cache.clear()
 
 
 @pytest.fixture()

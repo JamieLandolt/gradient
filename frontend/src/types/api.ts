@@ -113,28 +113,42 @@ export interface RecommendationSummary {
   item_count: number
 }
 
-export interface StudyPlan {
-  id?: number
-  generated_at?: string | null
-  provider: string
+export interface StudyAvailabilitySlot {
+  day_of_week: number // 0=Monday..6=Sunday
+  start_hour: number // 0-23
+  slot_type: 'blocked' | 'study'
+}
+
+export interface RemainingAssessment {
+  enrolment_id: number
   course_code: string
-  target_grade: number
-  required_average_percent: number | null
-  target_status: string | null
-  sessions: {
-    session_date: string
-    duration_minutes: number
-    focus: string
-    assessment_name?: string
-  }[]
+  assessment_id: number | null
+  custom_assessment_id: number | null
+  name: string
+  weight: number
+  due_date: string | null
+  target_percent: number | null
+}
+
+export interface WeeklyStudyBlock {
+  day_of_week: number
+  start_hour: number
+  focus: string
+  course_code: string | null
+}
+
+export interface WeeklyStudyPlan {
+  id: number
+  week_start: string
+  generated_at: string | null
+  blocks: WeeklyStudyBlock[]
+  diagnostics: { severity: string; message: string }[]
   disclaimer: string
 }
 
-export interface StudyPlanSummary {
+export interface WeeklyStudyPlanSummary {
   id: number
-  course_code: string | null
-  target_grade: number
-  provider: string
+  week_start: string
   generated_at: string | null
 }
 

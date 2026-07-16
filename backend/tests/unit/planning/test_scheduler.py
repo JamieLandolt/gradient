@@ -96,6 +96,39 @@ class TestUnitCapAndOfferings:
         assert sorted(codes) == sorted(f"C{i}" for i in range(5))
 
 
+class TestTargetCoursesPerSemester:
+    """FR-3.6.6: full-time/part-time study load (a course-count target, not just a unit cap)."""
+
+    def test_fills_up_to_the_target_when_enough_are_eligible(self):
+        courses = [course(f"C{i}") for i in range(8)]
+        plan = build_plan(
+            courses, completed=frozenset(), start=Semester(2026, S1),
+            max_units_per_semester=100, target_courses_per_semester=4,
+        )
+
+        assert len(plan.semesters[0].entries) == 4
+        assert not any(d.severity == "info" for d in plan.diagnostics)
+
+    def test_shortfall_diagnostic_when_fewer_are_eligible_than_the_target(self):
+        courses = [course("A"), course("B")]
+        plan = build_plan(
+            courses, completed=frozenset(), start=Semester(2026, S1),
+            max_units_per_semester=100, target_courses_per_semester=4,
+        )
+
+        assert len(plan.semesters[0].entries) == 2
+        info_messages = [d.message for d in plan.diagnostics if d.severity == "info"]
+        assert len(info_messages) == 1
+        assert "Only 2" in info_messages[0]
+        assert "2026 S1" in info_messages[0]
+
+    def test_no_shortfall_diagnostic_without_a_target(self):
+        courses = [course("A"), course("B")]
+        plan = build_plan(courses, completed=frozenset(), start=Semester(2026, S1))
+
+        assert not any(d.severity == "info" for d in plan.diagnostics)
+
+
 class TestInfeasibility:
     def test_cycle_is_reported_not_returned(self):
         courses = [

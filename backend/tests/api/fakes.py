@@ -13,6 +13,7 @@ from app.providers.factory import get_providers
 from app.services.advisory import AdvisoryService
 from app.services.ingestion import IngestionService
 from app.services.planner import PlannerService
+from app.services.study_plan import WeeklyStudyPlanService
 from app.services.tracking import TrackingService
 
 CSSE1001_ASSESSMENTS = [
@@ -134,6 +135,8 @@ class FakeStudentRepository:
         self.user_programs: list[dict[str, Any]] = []
         self.profiles: dict[str, dict[str, Any]] = {}
         self.deleted_accounts: list[str] = []
+        self.assessment_targets: list[dict[str, Any]] = []
+        self.study_availability: list[dict[str, Any]] = []
         self._next_id = 0
 
     def _new_id(self) -> int:
@@ -250,6 +253,41 @@ class FakeStudentRepository:
             if not (g["user_id"] == user_id and g["id"] == grade_id)
         ]
         return len(self.grades) < before
+
+    def list_assessment_targets(self, user_id: str, enrolment_ids: list[int]):
+        return [
+            dict(t) for t in self.assessment_targets
+            if t["user_id"] == user_id and t["enrolment_id"] in enrolment_ids
+        ]
+
+    def upsert_assessment_target(self, user_id, enrolment_id, target_percent,
+                                  assessment_id=None, custom_assessment_id=None):
+        for t in self.assessment_targets:
+            if (
+                t["enrolment_id"] == enrolment_id
+                and t["assessment_id"] == assessment_id
+                and t["custom_assessment_id"] == custom_assessment_id
+            ):
+                t["target_percent"] = target_percent
+                return dict(t)
+        row = {
+            "id": self._new_id(), "user_id": user_id, "enrolment_id": enrolment_id,
+            "assessment_id": assessment_id, "custom_assessment_id": custom_assessment_id,
+            "target_percent": target_percent,
+        }
+        self.assessment_targets.append(row)
+        return dict(row)
+
+    def list_study_availability(self, user_id: str):
+        return [dict(a) for a in self.study_availability if a["user_id"] == user_id]
+
+    def replace_study_availability(self, user_id: str, slots: list[dict[str, Any]]):
+        self.study_availability = [
+            a for a in self.study_availability if a["user_id"] != user_id
+        ]
+        rows = [{**slot, "user_id": user_id} for slot in slots]
+        self.study_availability.extend(rows)
+        return [dict(r) for r in rows]
 
     def get_user_programs(self, user_id: str):
         links = sorted(
@@ -411,7 +449,7 @@ class FakeArtifactRepository:
         self._catalogue = catalogue
         self._students = students
         self.recommendations: list[dict[str, Any]] = []
-        self.study_plans: list[dict[str, Any]] = []
+        self.weekly_study_plans: list[dict[str, Any]] = []
         self.degree_plans: list[dict[str, Any]] = []
         self._next_id = 5000
         self._seq = 0
@@ -473,55 +511,71 @@ class FakeArtifactRepository:
         ]
         return len(self.recommendations) < before
 
-    # ── Study plans ───────────────────────────────────────────────────────
-    def save_study_plan(self, user_id, enrolment_id, target_grade, provider, sessions):
-        enrolments = None
-        enrolment = self._students.get_enrolment(user_id, enrolment_id) if enrolment_id else None
-        if enrolment:
-            enrolments = {
-                "course_offerings": {"courses": dict(enrolment["course_offerings"]["courses"])}
-            }
+    # ── Weekly study plans ────────────────────────────────────────────────
+    def save_weekly_study_plan(self, user_id, week_start, blocks):
+        self.weekly_study_plans = [
+            p for p in self.weekly_study_plans
+            if not (p["user_id"] == user_id and p["week_start"] == week_start)
+        ]
         record = {
-            "id": self._new_id(), "user_id": user_id, "enrolment_id": enrolment_id,
-            "target_grade": target_grade, "provider": provider,
-            "generated_at": self._stamp(), "_enrolments": enrolments,
-            "sessions": [
-                {"assessment_id": None, "custom_assessment_id": None,
-                 "session_date": s["session_date"], "duration_minutes": s["duration_minutes"],
-                 "focus": s["focus"], "sort_order": s.get("sort_order", i)}
-                for i, s in enumerate(sessions)
+            "id": self._new_id(), "user_id": user_id, "week_start": week_start,
+            "generated_at": self._stamp(),
+            "blocks": [
+                {
+                    "day_of_week": b["day_of_week"], "start_hour": b["start_hour"],
+                    "enrolment_id": b.get("enrolment_id"),
+                    "assessment_id": b.get("assessment_id"),
+                    "custom_assessment_id": b.get("custom_assessment_id"),
+                    "focus": b["focus"], "sort_order": i,
+                }
+                for i, b in enumerate(blocks)
             ],
         }
-        self.study_plans.append(record)
-        return {"id": record["id"], "generated_at": record["generated_at"]}
+        self.weekly_study_plans.append(record)
+        return {
+            "id": record["id"], "week_start": week_start, "generated_at": record["generated_at"],
+        }
 
-    def list_study_plans(self, user_id):
-        mine = [p for p in self.study_plans if p["user_id"] == user_id]
+    def list_weekly_study_plans(self, user_id):
+        mine = [p for p in self.weekly_study_plans if p["user_id"] == user_id]
         return [
-            {"id": p["id"], "enrolment_id": p["enrolment_id"], "target_grade": p["target_grade"],
-             "provider": p["provider"], "generated_at": p["generated_at"],
-             "enrolments": p["_enrolments"]}
-            for p in reversed(mine)
+            {"id": p["id"], "week_start": p["week_start"], "generated_at": p["generated_at"]}
+            for p in sorted(mine, key=lambda p: p["week_start"], reverse=True)
         ]
 
-    def get_study_plan(self, user_id, plan_id):
-        for p in self.study_plans:
+    def _block_enrolment_nested(self, user_id, enrolment_id):
+        if enrolment_id is None:
+            return None
+        enrolment = self._students.get_enrolment(user_id, enrolment_id)
+        if enrolment is None:
+            return None
+        return {"course_offerings": {"courses": dict(enrolment["course_offerings"]["courses"])}}
+
+    def get_weekly_study_plan(self, user_id, plan_id):
+        for p in self.weekly_study_plans:
             if p["user_id"] == user_id and p["id"] == plan_id:
                 return {
-                    "id": p["id"], "enrolment_id": p["enrolment_id"],
-                    "target_grade": p["target_grade"], "provider": p["provider"],
-                    "generated_at": p["generated_at"], "enrolments": p["_enrolments"],
-                    "study_sessions": [dict(s) for s in p["sessions"]],
+                    "id": p["id"], "week_start": p["week_start"],
+                    "generated_at": p["generated_at"],
+                    "weekly_study_blocks": [
+                        {
+                            **dict(b),
+                            "enrolments": self._block_enrolment_nested(
+                                user_id, b.get("enrolment_id")
+                            ),
+                        }
+                        for b in p["blocks"]
+                    ],
                 }
         return None
 
-    def delete_study_plan(self, user_id, plan_id):
-        before = len(self.study_plans)
-        self.study_plans = [
-            p for p in self.study_plans
+    def delete_weekly_study_plan(self, user_id, plan_id):
+        before = len(self.weekly_study_plans)
+        self.weekly_study_plans = [
+            p for p in self.weekly_study_plans
             if not (p["user_id"] == user_id and p["id"] == plan_id)
         ]
-        return len(self.study_plans) < before
+        return len(self.weekly_study_plans) < before
 
     # ── Degree plans ──────────────────────────────────────────────────────
     def save_degree_plan(self, user_id, name, feasible, entries, diagnostics):
@@ -598,6 +652,9 @@ def build_client(
     )
     app.dependency_overrides[deps.get_advisory_service] = lambda: AdvisoryService(
         catalogue, students, ingestion, tracking, providers, artifacts
+    )
+    app.dependency_overrides[deps.get_weekly_study_plan_service] = (
+        lambda: WeeklyStudyPlanService(students, tracking, artifacts)
     )
     if user is not None:
         app.dependency_overrides[get_current_user] = lambda: user

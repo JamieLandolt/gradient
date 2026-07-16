@@ -46,7 +46,11 @@ function stubApi(jobPolls: unknown[] = [EXTRACTED]) {
       pollIndex += 1
       return json(body)
     }
-    if (String(url).includes('/ingestion/jobs') || String(url).includes('/ingestion/uploads')) {
+    if (
+      String(url).includes('/ingestion/jobs') ||
+      String(url).includes('/ingestion/uploads') ||
+      String(url).includes('/ingestion/from-url')
+    ) {
       return json(QUEUED, 201)
     }
     return json(null, 404)
@@ -90,12 +94,32 @@ test('renders a failure message when the background job fails', async () => {
   expect(await screen.findByText(/Extraction failed:/)).toBeInTheDocument()
 })
 
+test('entering a course code posts to the from-url endpoint and disables paste/upload', async () => {
+  const calls = stubApi([EXTRACTED])
+  renderPage()
+
+  await userEvent.type(screen.getByLabelText('Course code (fetches automatically)'), 'COMP3506')
+
+  // Entering a course code switches the input mode: paste + upload disable.
+  expect(screen.getByLabelText('Course profile text')).toBeDisabled()
+  expect(screen.getByLabelText('…or upload a PDF or .txt')).toBeDisabled()
+
+  await userEvent.click(screen.getByRole('button', { name: 'Extract' }))
+
+  expect(await screen.findByText('COMP2140: extracted')).toBeInTheDocument()
+  await waitFor(() =>
+    expect(
+      calls.some((c) => c.url.includes('/ingestion/from-url') && c.method === 'POST'),
+    ).toBe(true),
+  )
+})
+
 test('uploading a PDF posts to the upload endpoint and disables the paste box', async () => {
   const calls = stubApi([EXTRACTED])
   renderPage()
 
   const file = new File([new Uint8Array([1, 2, 3])], 'profile.pdf', { type: 'application/pdf' })
-  await userEvent.upload(screen.getByLabelText('Upload a PDF or .txt'), file)
+  await userEvent.upload(screen.getByLabelText('…or upload a PDF or .txt'), file)
 
   // Selecting a file switches the input mode: the paste box is disabled.
   expect(screen.getByLabelText('Course profile text')).toBeDisabled()

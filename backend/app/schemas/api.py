@@ -68,7 +68,10 @@ class WhatIfRequest(BaseModel):
 class SequenceRequest(BaseModel):
     start_year: int = Field(ge=2000, le=2100)
     start_semester: Literal["S1", "S2"]
-    max_units_per_semester: float = Field(default=8, gt=0, le=20)
+    # Determines the target course count per semester (FR-3.6.6): full_time=4,
+    # part_time=2. The scheduler fills to this target where enough eligible
+    # courses exist; it never relaxes prerequisite/offering correctness to do so.
+    study_load: Literal["full_time", "part_time"] = "full_time"
     # Planner preferences (FR-3.6.6, optional): front-load courses that are
     # immediately takeable, and/or courses matching topic interests. Both only
     # re-order the deterministic plan; they never relax prerequisite correctness.
@@ -97,15 +100,45 @@ class IngestionSubmitRequest(BaseModel):
     source_ref: str = Field(default="", max_length=500)
 
 
+class IngestionUrlRequest(BaseModel):
+    # Restricted to UQ's course-code charset: interpolated into the catalogue
+    # URL we scrape, so this also bounds what that request can contain.
+    course_code: str = Field(min_length=2, max_length=20, pattern=r"^[A-Za-z0-9]+$")
+
+
 class RecommendRequest(BaseModel):
     interests: list[str] = Field(default_factory=list, max_length=20)
     limit: int = Field(default=5, ge=1, le=20)
 
 
-class StudyPlanGenerateRequest(BaseModel):
+class StudyAvailabilitySlotRequest(BaseModel):
+    day_of_week: int = Field(ge=0, le=6)  # 0=Monday..6=Sunday
+    start_hour: int = Field(ge=0, le=23)
+    slot_type: Literal["blocked", "study"]
+
+
+class StudyAvailabilityRequest(BaseModel):
+    """Full replace of the student's weekly time-block template (FR-3.8.x)."""
+
+    slots: list[StudyAvailabilitySlotRequest] = Field(default_factory=list, max_length=168)
+
+
+class AssessmentTargetRequest(BaseModel):
     enrolment_id: int
-    target_grade: int = Field(default=4, ge=1, le=7)
-    start_date: date | None = None
+    assessment_id: int | None = None
+    custom_assessment_id: int | None = None
+    target_percent: float = Field(ge=0, le=100)
+
+    def target_is_valid(self) -> bool:
+        return (self.assessment_id is None) != (self.custom_assessment_id is None)
+
+
+class AssessmentTargetsRequest(BaseModel):
+    targets: list[AssessmentTargetRequest] = Field(default_factory=list, max_length=200)
+
+
+class WeeklyStudyPlanGenerateRequest(BaseModel):
+    week_start: date
 
 
 class AssistantAskRequest(BaseModel):

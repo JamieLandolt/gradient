@@ -1,156 +1,386 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import type { FormEvent } from 'react'
 
 import { ApiError, apiClient } from '../../lib/apiClient'
-import type { EnrolmentSummary, StudyPlan, StudyPlanSummary } from '../../types/api'
+import type {
+  RemainingAssessment,
+  StudyAvailabilitySlot,
+  WeeklyStudyBlock,
+  WeeklyStudyPlan,
+  WeeklyStudyPlanSummary,
+} from '../../types/api'
 
-export function StudyPlanPage() {
+const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+// 7am–10pm covers realistic study/class hours without a 24-row grid.
+const HOURS = Array.from({ length: 16 }, (_, i) => i + 7)
+
+function slotKey(day: number, hour: number) {
+  return `${day}-${hour}`
+}
+
+function hourLabel(hour: number) {
+  const period = hour < 12 ? 'am' : 'pm'
+  const display = hour % 12 === 0 ? 12 : hour % 12
+  return `${display}${period}`
+}
+
+function currentWeekMonday(): string {
+  const now = new Date()
+  const day = now.getDay() // 0=Sun..6=Sat
+  const diffToMonday = day === 0 ? -6 : 1 - day
+  const monday = new Date(now)
+  monday.setDate(now.getDate() + diffToMonday)
+  return monday.toISOString().slice(0, 10)
+}
+
+function WeekGrid({
+  cellClass,
+  cellContent,
+  onCellClick,
+}: {
+  cellClass: (day: number, hour: number) => string
+  cellContent?: (day: number, hour: number) => React.ReactNode
+  onCellClick?: (day: number, hour: number) => void
+}) {
+  return (
+    <div className="week-grid" role="grid">
+      <div />
+      {DAY_LABELS.map((label) => (
+        <div key={label} className="week-grid-header">{label}</div>
+      ))}
+      {HOURS.map((hour) => (
+        <Fragment key={hour}>
+          <div className="week-grid-hour-label">{hourLabel(hour)}</div>
+          {DAY_LABELS.map((label, day) => (
+            <button
+              key={label}
+              type="button"
+              className={`week-slot ${cellClass(day, hour)}`}
+              onClick={onCellClick ? () => onCellClick(day, hour) : undefined}
+              disabled={!onCellClick}
+              aria-label={`${label} ${hourLabel(hour)}`}
+            >
+              {cellContent?.(day, hour)}
+            </button>
+          ))}
+        </Fragment>
+      ))}
+    </div>
+  )
+}
+
+function AvailabilityEditor() {
   const queryClient = useQueryClient()
-  const { data: enrolments } = useQuery({
-    queryKey: ['enrolments'],
-    queryFn: () => apiClient.get<EnrolmentSummary[]>('/enrolments'),
+  const { data } = useQuery({
+    queryKey: ['study-availability'],
+    queryFn: () => apiClient.get<StudyAvailabilitySlot[]>('/study-availability'),
   })
-  const { data: saved } = useQuery({
-    queryKey: ['study-plans'],
-    queryFn: () => apiClient.get<StudyPlanSummary[]>('/study-plans'),
+  const [pending, setPending] = useState<Record<string, 'blocked' | 'study'> | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const slots =
+    pending ??
+    Object.fromEntries(
+      (data ?? []).map((s) => [slotKey(s.day_of_week, s.start_hour), s.slot_type]),
+    )
+
+  function cycle(day: number, hour: number) {
+    const key = slotKey(day, hour)
+    const next = { ...slots }
+    const current = next[key]
+    if (current === undefined) next[key] = 'study'
+    else if (current === 'study') next[key] = 'blocked'
+    else delete next[key]
+    setPending(next)
+  }
+
+  const save = useMutation({
+    mutationFn: () =>
+      apiClient.put<StudyAvailabilitySlot[]>('/study-availability', {
+        slots: Object.entries(slots).map(([key, slot_type]) => {
+          const [day, hour] = key.split('-').map(Number)
+          return { day_of_week: day, start_hour: hour, slot_type }
+        }),
+      }),
+    onSuccess: () => {
+      setPending(null)
+      setError(null)
+      void queryClient.invalidateQueries({ queryKey: ['study-availability'] })
+    },
+    onError: (err) =>
+      setError(err instanceof ApiError ? err.message : 'Could not save your weekly template'),
   })
-  const [enrolmentId, setEnrolmentId] = useState('')
-  const [targetGrade, setTargetGrade] = useState(5)
-  const [plan, setPlan] = useState<StudyPlan | null>(null)
+
+  return (
+    <section aria-label="Weekly availability">
+      <h2>Your weekly time blocks</h2>
+      <p>
+        Click a slot to cycle it: free → <span className="tag-study">study</span> →{' '}
+        <span className="tag-blocked">blocked (classes, commitments)</span> → free.
+      </p>
+      <WeekGrid cellClass={(day, hour) => slots[slotKey(day, hour)] ?? ''} onCellClick={cycle} />
+      {error && <p role="alert" className="form-error">{error}</p>}
+      <button type="button" onClick={() => save.mutate()} disabled={save.isPending}>
+        {save.isPending ? 'Saving…' : 'Save weekly template'}
+      </button>
+    </section>
+  )
+}
+
+function targetKey(item: RemainingAssessment) {
+  return `${item.enrolment_id}-${item.assessment_id ?? ''}-${item.custom_assessment_id ?? ''}`
+}
+
+function TargetsEditor() {
+  const queryClient = useQueryClient()
+  const { data: items } = useQuery({
+    queryKey: ['remaining-assessments'],
+    queryFn: () => apiClient.get<RemainingAssessment[]>('/study-plans/remaining-assessments'),
+  })
+  const [edits, setEdits] = useState<Record<string, string>>({})
+  const [error, setError] = useState<string | null>(null)
+  const [saved, setSaved] = useState(false)
+
+  const save = useMutation({
+    mutationFn: () => {
+      const targets = (items ?? [])
+        .filter((item) => edits[targetKey(item)]?.trim())
+        .map((item) => ({
+          enrolment_id: item.enrolment_id,
+          assessment_id: item.assessment_id,
+          custom_assessment_id: item.custom_assessment_id,
+          target_percent: Number(edits[targetKey(item)]),
+        }))
+      return apiClient.put('/study-plans/targets', { targets })
+    },
+    onSuccess: () => {
+      setSaved(true)
+      setError(null)
+      void queryClient.invalidateQueries({ queryKey: ['remaining-assessments'] })
+    },
+    onError: (err) =>
+      setError(err instanceof ApiError ? err.message : 'Could not save your targets'),
+  })
+
+  if (!items || items.length === 0) {
+    return (
+      <section aria-label="Assessment targets">
+        <h2>Your target marks</h2>
+        <p className="page-status">
+          No remaining assessments — enrol in a course or add assessment items first.
+        </p>
+      </section>
+    )
+  }
+
+  const byCourse = new Map<string, RemainingAssessment[]>()
+  for (const item of items) {
+    const list = byCourse.get(item.course_code) ?? []
+    list.push(item)
+    byCourse.set(item.course_code, list)
+  }
+
+  function handleSubmit(event: FormEvent) {
+    event.preventDefault()
+    save.mutate()
+  }
+
+  return (
+    <section aria-label="Assessment targets">
+      <h2>Your target marks</h2>
+      <p>Set a target mark for each remaining assessment — this drives how much study time it gets.</p>
+      <form onSubmit={handleSubmit}>
+        {[...byCourse.entries()].map(([courseCode, courseItems]) => (
+          <div key={courseCode}>
+            <h3>{courseCode}</h3>
+            <ul className="session-list">
+              {courseItems.map((item) => (
+                <li key={targetKey(item)}>
+                  <span>
+                    {item.name} ({item.weight}%{item.due_date ? `, due ${item.due_date}` : ''})
+                  </span>{' '}
+                  <input
+                    aria-label={`Target percent for ${item.name}`}
+                    type="number"
+                    min={0}
+                    max={100}
+                    placeholder={item.target_percent !== null ? String(item.target_percent) : '65'}
+                    value={edits[targetKey(item)] ?? ''}
+                    onChange={(e) =>
+                      setEdits({ ...edits, [targetKey(item)]: e.target.value })
+                    }
+                  />
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+        {error && <p role="alert" className="form-error">{error}</p>}
+        {saved && !error && <p className="page-status">Targets saved.</p>}
+        <button type="submit" disabled={save.isPending}>
+          {save.isPending ? 'Saving…' : 'Save targets'}
+        </button>
+      </form>
+    </section>
+  )
+}
+
+function WeeklyBlocksView({ blocks }: { blocks: WeeklyStudyBlock[] }) {
+  const byCell = new Map<string, WeeklyStudyBlock>()
+  for (const block of blocks) {
+    byCell.set(slotKey(block.day_of_week, block.start_hour), block)
+  }
+  return (
+    <WeekGrid
+      cellClass={(day, hour) => (byCell.has(slotKey(day, hour)) ? 'filled' : '')}
+      cellContent={(day, hour) => {
+        const block = byCell.get(slotKey(day, hour))
+        return block ? <span title={block.focus}>{block.course_code}</span> : null
+      }}
+    />
+  )
+}
+
+function GenerateSection() {
+  const queryClient = useQueryClient()
+  const [weekStart, setWeekStart] = useState(currentWeekMonday())
+  const [plan, setPlan] = useState<WeeklyStudyPlan | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const generate = useMutation({
     mutationFn: () =>
-      apiClient.post<StudyPlan>('/study-plans/generate', {
-        enrolment_id: Number(enrolmentId),
-        target_grade: targetGrade,
-      }),
+      apiClient.post<WeeklyStudyPlan>('/study-plans/generate', { week_start: weekStart }),
     onSuccess: (data) => {
       setPlan(data)
       setError(null)
-      void queryClient.invalidateQueries({ queryKey: ['study-plans'] })
+      void queryClient.invalidateQueries({ queryKey: ['weekly-study-plans'] })
     },
     onError: (err) =>
       setError(err instanceof ApiError ? err.message : 'Could not generate a plan'),
   })
 
-  const load = useMutation({
-    mutationFn: (id: number) => apiClient.get<StudyPlan>(`/study-plans/${id}`),
-    retry: 1, // recover from a transient hiccup instead of failing silently
-    onSuccess: (data) => {
-      setPlan(data)
-      setError(null)
-    },
-    onError: (err) =>
-      setError(err instanceof ApiError ? err.message : 'Could not load that plan'),
+  function handleSubmit(event: FormEvent) {
+    event.preventDefault()
+    generate.mutate()
+  }
+
+  return (
+    <section aria-label="Generate weekly plan">
+      <h2>Generate this week&rsquo;s plan</h2>
+      <form onSubmit={handleSubmit} className="inline-form">
+        <label>
+          Week starting (Monday){' '}
+          <input
+            aria-label="Week start"
+            type="date"
+            value={weekStart}
+            onChange={(e) => setWeekStart(e.target.value)}
+          />
+        </label>
+        <button type="submit" disabled={generate.isPending}>
+          {generate.isPending ? 'Generating…' : 'Generate'}
+        </button>
+      </form>
+      {generate.isPending && (
+        <p className="page-status" role="status">Building your weekly plan…</p>
+      )}
+      {error && <p role="alert" className="form-error">{error}</p>}
+      {plan && (
+        <div aria-live="polite">
+          {plan.diagnostics.map((d) => (
+            <p key={d.message} className="page-status">{d.message}</p>
+          ))}
+          <WeeklyBlocksView blocks={plan.blocks} />
+          <p className="page-status">{plan.disclaimer}</p>
+        </div>
+      )}
+    </section>
+  )
+}
+
+function SavedPlansList() {
+  const queryClient = useQueryClient()
+  const { data: saved } = useQuery({
+    queryKey: ['weekly-study-plans'],
+    queryFn: () => apiClient.get<WeeklyStudyPlanSummary[]>('/study-plans'),
+  })
+  const [openId, setOpenId] = useState<number | null>(null)
+
+  const openPlan = useQuery({
+    queryKey: ['weekly-study-plan', openId],
+    queryFn: () => apiClient.get<WeeklyStudyPlan>(`/study-plans/${openId}`),
+    enabled: openId !== null,
   })
 
   const remove = useMutation({
     mutationFn: (id: number) => apiClient.delete(`/study-plans/${id}`),
     onSuccess: (_data, id) => {
-      if (plan?.id === id) setPlan(null)
-      void queryClient.invalidateQueries({ queryKey: ['study-plans'] })
+      if (openId === id) setOpenId(null)
+      void queryClient.invalidateQueries({ queryKey: ['weekly-study-plans'] })
     },
-    onError: (err) =>
-      setError(err instanceof ApiError ? err.message : 'Could not delete that plan'),
   })
 
-  const current = (enrolments ?? []).filter((e) => e.status === 'in_progress')
-
-  function handleSubmit(event: FormEvent) {
-    event.preventDefault()
-    if (!enrolmentId) {
-      setError('Pick a course')
-      return
-    }
-    generate.mutate()
-  }
+  if (!saved || saved.length === 0) return null
 
   return (
+    <section aria-label="Saved weekly plans">
+      <h2>Saved plans</h2>
+      <ul className="card-list">
+        {saved.map((summary) => (
+          <li key={summary.id} className="course-card">
+            <div className="saved-plan-row">
+              <strong>Week of {summary.week_start}</strong>
+              <button
+                type="button"
+                aria-pressed={openId === summary.id}
+                onClick={() => setOpenId(openId === summary.id ? null : summary.id)}
+              >
+                {openId === summary.id ? 'Hide' : 'View'}
+              </button>
+              <button
+                type="button"
+                className="link-button"
+                onClick={() => remove.mutate(summary.id)}
+                disabled={remove.isPending}
+              >
+                Delete
+              </button>
+            </div>
+            {openId === summary.id && (
+              <div aria-live="polite">
+                {openPlan.isFetching && (
+                  <p className="page-status" role="status">Loading plan…</p>
+                )}
+                {openPlan.error && (
+                  <p role="alert" className="form-error">
+                    {openPlan.error instanceof ApiError
+                      ? openPlan.error.message
+                      : 'Could not load that plan'}
+                  </p>
+                )}
+                {openPlan.data && <WeeklyBlocksView blocks={openPlan.data.blocks} />}
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+export function StudyPlanPage() {
+  return (
     <main>
-      <h1>Study plan</h1>
-      <p>Generate a session-by-session study schedule for a course's remaining assessment.</p>
-      <form onSubmit={handleSubmit} className="inline-form">
-        <select
-          aria-label="Course"
-          value={enrolmentId}
-          onChange={(e) => setEnrolmentId(e.target.value)}
-        >
-          <option value="">Choose a course…</option>
-          {current.map((enrolment) => (
-            <option key={enrolment.enrolment_id} value={enrolment.enrolment_id}>
-              {enrolment.course_code} ({enrolment.year} {enrolment.semester})
-            </option>
-          ))}
-        </select>
-        <label>
-          Target grade{' '}
-          <select
-            aria-label="Target grade"
-            value={targetGrade}
-            onChange={(e) => setTargetGrade(Number(e.target.value))}
-          >
-            {[4, 5, 6, 7].map((grade) => (
-              <option key={grade} value={grade}>{grade}</option>
-            ))}
-          </select>
-        </label>
-        <button type="submit" disabled={generate.isPending}>
-          {generate.isPending ? 'Generating…' : 'Generate plan'}
-        </button>
-      </form>
-      {generate.isPending && <p className="page-status" role="status">Building your plan…</p>}
-      {error && <p role="alert" className="form-error">{error}</p>}
-
-      {saved && saved.length > 0 && (
-        <section aria-label="Saved study plans">
-          <h2>Saved plans</h2>
-          <ul className="card-list">
-            {saved.map((summary) => (
-              <li key={summary.id} className="course-card">
-                <div className="saved-plan-row">
-                  <strong>{summary.course_code ?? 'Course'}</strong>
-                  <span>grade {summary.target_grade}</span>
-                  <button
-                    type="button"
-                    onClick={() => load.mutate(summary.id)}
-                    disabled={load.isPending && load.variables === summary.id}
-                  >
-                    {load.isPending && load.variables === summary.id ? 'Loading…' : 'View'}
-                  </button>
-                  <button
-                    type="button"
-                    className="link-button"
-                    onClick={() => remove.mutate(summary.id)}
-                  >
-                    Delete
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {plan && (
-        <section aria-live="polite">
-          <h2>
-            {plan.course_code} — aiming for grade {plan.target_grade}
-            {plan.required_average_percent !== null &&
-              ` (needs ${plan.required_average_percent.toFixed(0)}% average)`}
-          </h2>
-          <ul className="session-list">
-            {plan.sessions.map((session, index) => (
-              <li key={index}>
-                <strong>{session.session_date}</strong> · {session.duration_minutes} min —{' '}
-                {session.focus}
-              </li>
-            ))}
-          </ul>
-          <p className="page-status">{plan.disclaimer}</p>
-        </section>
-      )}
+      <h1>Weekly study plan</h1>
+      <p>
+        Set your weekly time blocks and target marks once, then generate a study schedule that
+        fits around your classes and commitments across all your in-progress courses.
+      </p>
+      <AvailabilityEditor />
+      <TargetsEditor />
+      <GenerateSection />
+      <SavedPlansList />
     </main>
   )
 }

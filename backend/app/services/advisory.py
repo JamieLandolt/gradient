@@ -1,16 +1,17 @@
-"""Advisory AI features: recommendations, study plans, search, assistant.
+"""Advisory AI features: recommendations, search, assistant.
 
 Every grade or prerequisite fact cited in an output is produced by the
-deterministic engines and handed to the provider (FR-3.7.2, FR-3.8.3);
-providers only rank, schedule, and phrase.
+deterministic engines and handed to the provider (FR-3.7.2, FR-3.9.3);
+providers only rank and phrase. (Weekly study plans are a separate, fully
+deterministic feature — see app.services.study_plan.)
 
-Generated recommendations and study plans are persisted (FR-3.7.x/3.8.2) so they
-are revisitable and regenerable; the assistant additionally supports token
-streaming (FR-3.9.3).
+Generated recommendations are persisted (FR-3.7.x) so they are revisitable
+and regenerable; the assistant additionally supports token streaming (FR-3.9.3).
 """
 
+import re
+import time
 from collections.abc import Iterator
-from datetime import date
 from typing import Any
 
 from app.core.errors import NotFoundError, ValidationFailedError
@@ -25,13 +26,49 @@ from app.services.tracking import TrackingService
 DEFAULT_RECOMMENDATION_LIMIT = 5
 DEFAULT_SEARCH_LIMIT = 10
 
+# Bounds how many candidate courses are sent to the LLM per recommend() call —
+# without this, the prompt payload (and cost/latency) grows with the whole
+# catalogue. Interest-matching courses are kept first; the rest pad up to the cap.
+MAX_RECOMMEND_CANDIDATES = 60
+_WORD = re.compile(r"[a-z]{3,}")
+
+# In-process cache so repeated "Regenerate" clicks with unchanged inputs skip
+# the LLM call entirely. Keyed by everything that can change the result;
+# module-level (not per-service-instance) since a new AdvisoryService is
+# constructed per request. Deliberately simple: no eviction beyond TTL, and
+# doesn't survive a process restart or share across multiple workers — both
+# acceptable for this app's scale (see docs/REVIEW_efficiency_ux.md).
+_RECOMMEND_CACHE_TTL_S = 300.0
+_recommend_cache: dict[tuple[Any, ...], tuple[float, dict[str, Any]]] = {}
+
+
+def _tokens(text: str) -> set[str]:
+    return set(_WORD.findall(text.lower()))
+
+
+def _bounded_candidate_pool(
+    courses: list[dict[str, Any]], interests: list[str], cap: int
+) -> list[dict[str, Any]]:
+    """Cap the candidate list, preferring courses matching the student's interests."""
+    if len(courses) <= cap:
+        return courses
+    interest_words = _tokens(" ".join(interests))
+    if not interest_words:
+        return courses[:cap]
+    matching = [
+        c for c in courses
+        if interest_words & _tokens(f"{c['title']} {c.get('description', '')}")
+    ]
+    if len(matching) >= cap:
+        return matching[:cap]
+    matched_codes = {c["code"] for c in matching}
+    remainder = [c for c in courses if c["code"] not in matched_codes]
+    return matching + remainder[: cap - len(matching)]
+
+
 _RECOMMENDATION_DISCLAIMER = (
     "Recommendations are advisory only — your official program requirements and "
     "course profiles remain authoritative."
-)
-_STUDY_PLAN_DISCLAIMER = (
-    "Study plans are advisory; assessment details come from your course profile "
-    "and your recorded marks."
 )
 
 
@@ -57,7 +94,16 @@ class AdvisoryService:
         self, user_id: str, interests: list[str], limit: int = DEFAULT_RECOMMENDATION_LIMIT
     ) -> dict[str, Any]:
         completed = self._students.completed_course_codes(user_id)
-        courses = self._catalogue.list_courses()
+        cache_key = (user_id, tuple(sorted(interests)), completed, limit)
+        cached = _recommend_cache.get(cache_key)
+        now = time.monotonic()
+        if cached is not None and now - cached[0] < _RECOMMEND_CACHE_TTL_S:
+            return cached[1]
+
+        courses = [
+            c for c in self._catalogue.list_courses() if c["code"] not in completed
+        ]
+        courses = _bounded_candidate_pool(courses, interests, MAX_RECOMMEND_CANDIDATES)
         code_to_id = {course["code"]: course["id"] for course in courses}
         # One batched query instead of two per course (was N+1 over the catalogue).
         trees = self._catalogue.get_prereq_trees([course["id"] for course in courses])
@@ -97,13 +143,15 @@ class AdvisoryService:
         record = self._artifacts.save_recommendation(
             user_id, self._providers.name, persisted_items
         )
-        return {
+        result = {
             "id": record["id"],
             "generated_at": record.get("generated_at"),
             "provider": self._providers.name,
             "items": items,
             "disclaimer": _RECOMMENDATION_DISCLAIMER,
         }
+        _recommend_cache[cache_key] = (now, result)
+        return result
 
     def latest_recommendation(self, user_id: str) -> dict[str, Any] | None:
         row = self._artifacts.latest_recommendation(user_id)
@@ -148,88 +196,6 @@ class AdvisoryService:
             "disclaimer": _RECOMMENDATION_DISCLAIMER,
         }
 
-    # ── Study plans (FR-3.8.x) ────────────────────────────────────────────
-    def study_plan(
-        self,
-        user_id: str,
-        enrolment_id: int,
-        target_grade: int,
-        start_date: str | None,
-    ) -> dict[str, Any]:
-        enrolment = self._tracking._require_enrolment(user_id, enrolment_id)
-        rows = self._tracking.assessment_rows(user_id, enrolment)
-        if not rows:
-            raise ValidationFailedError("This course has no assessment items yet")
-        required = self._tracking.required_marks(user_id, enrolment_id, target_grade, {})
-        course_code = enrolment["course_offerings"]["courses"]["code"]
-        sessions = self._providers.study_plans.generate(
-            course_code=course_code,
-            items=rows,
-            target_grade=target_grade,
-            required_average_percent=required.required_average_percent,
-            start_date=start_date or date.today().isoformat(),
-        )
-        record = self._artifacts.save_study_plan(
-            user_id, enrolment_id, target_grade, self._providers.name, sessions
-        )
-        return {
-            "id": record["id"],
-            "generated_at": record.get("generated_at"),
-            "provider": self._providers.name,
-            "course_code": course_code,
-            "target_grade": target_grade,
-            "required_average_percent": required.required_average_percent,
-            "target_status": required.status.value,
-            "sessions": sessions,
-            "disclaimer": _STUDY_PLAN_DISCLAIMER,
-        }
-
-    def list_study_plans(self, user_id: str) -> list[dict[str, Any]]:
-        rows = self._artifacts.list_study_plans(user_id)
-        return [
-            {
-                "id": row["id"],
-                "course_code": _plan_course_code(row),
-                "target_grade": row["target_grade"],
-                "provider": row["provider"],
-                "generated_at": row.get("generated_at"),
-            }
-            for row in rows
-        ]
-
-    def get_study_plan(self, user_id: str, plan_id: int) -> dict[str, Any]:
-        row = self._artifacts.get_study_plan(user_id, plan_id)
-        if row is None:
-            raise NotFoundError("Study plan not found")
-        sessions = sorted(
-            row.get("study_sessions") or [], key=lambda s: s.get("sort_order", 0)
-        )
-        return {
-            "id": row["id"],
-            "generated_at": row.get("generated_at"),
-            "provider": row["provider"],
-            "course_code": _plan_course_code(row),
-            "target_grade": row["target_grade"],
-            # These derived figures are recomputed live, not stored on the plan.
-            "required_average_percent": None,
-            "target_status": None,
-            "sessions": [
-                {
-                    "session_date": s["session_date"],
-                    "duration_minutes": s["duration_minutes"],
-                    "focus": s["focus"],
-                    "assessment_name": "",
-                    "sort_order": s.get("sort_order", 0),
-                }
-                for s in sessions
-            ],
-            "disclaimer": _STUDY_PLAN_DISCLAIMER,
-        }
-
-    def delete_study_plan(self, user_id: str, plan_id: int) -> None:
-        if not self._artifacts.delete_study_plan(user_id, plan_id):
-            raise NotFoundError("Study plan not found")
-
     # ── Search (FR-3.9.1) ─────────────────────────────────────────────────
     def search(self, query: str, limit: int = DEFAULT_SEARCH_LIMIT) -> list[dict[str, Any]]:
         if not query.strip():
@@ -269,10 +235,3 @@ class AdvisoryService:
             raise ValidationFailedError("Ask a question")
         facts = self._assemble_facts(user_id, enrolment_id)
         return self._providers.assistant.stream_answer(question, facts)
-
-
-def _plan_course_code(row: dict[str, Any]) -> str | None:
-    enrolment = row.get("enrolments") or {}
-    offering = enrolment.get("course_offerings") or {}
-    course = offering.get("courses") or {}
-    return course.get("code")

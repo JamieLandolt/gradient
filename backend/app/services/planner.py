@@ -13,10 +13,11 @@ from app.domain.planning.dual_degree import merge_required_courses
 from app.domain.planning.models import (
     PlanPreferences,
     PlanResult,
+    PrereqNode,
     ProgramRequirements,
     Semester,
 )
-from app.domain.planning.prereq_ast import evaluate_prereq
+from app.domain.planning.prereq_ast import collect_course_codes, evaluate_prereq
 from app.domain.planning.scheduler import build_plan
 from app.repositories.artifacts import ArtifactRepository
 from app.repositories.catalogue import CatalogueRepository
@@ -24,9 +25,47 @@ from app.repositories.students import StudentRepository
 
 _WORD = re.compile(r"[a-z]{3,}")
 
+# Target course count per semester for each study load (FR-3.6.6). The unit
+# cap is sized generously above what that many courses could plausibly total
+# (UQ courses are uniformly 2 units in the current catalogue) so it only acts
+# as a safety ceiling and the course-count target is what actually determines
+# how many are placed.
+STUDY_LOAD_COURSE_TARGETS: dict[str, int] = {
+    "full_time": 4,
+    "part_time": 2,
+}
+_ASSUMED_MAX_COURSE_UNITS = 6.0
+
 
 def _tokens(text: str) -> set[str]:
     return set(_WORD.findall(text.lower()))
+
+
+def _expand_with_prerequisites(
+    required_codes: set[str] | frozenset[str],
+    completed: frozenset[str],
+    prereq_by_code: dict[str, PrereqNode | None],
+) -> list[str]:
+    """A required course's prerequisite might not itself be flagged 'required'
+    for this program (e.g. it's only an elective, or shared with another
+    program) — if it's never scheduled, the dependent required course can
+    never become eligible, which silently caps how many courses the scheduler
+    can place per semester below the study-load target. Pull in any such
+    prerequisite courses transitively (breadth-first over the prereq graph) so
+    they get planned — and thus completed — in time to unlock what depends on
+    them.
+    """
+    included = set(required_codes)
+    pending = set(required_codes)
+    while pending:
+        next_pending: set[str] = set()
+        for code in pending:
+            for ref in collect_course_codes(prereq_by_code.get(code)):
+                if ref in prereq_by_code and ref not in completed and ref not in included:
+                    included.add(ref)
+                    next_pending.add(ref)
+        pending = next_pending
+    return sorted(included)
 
 
 def _parse_label(label: str) -> tuple[int, str]:
@@ -164,23 +203,29 @@ class PlannerService:
         user_id: str,
         start_year: int,
         start_semester: str,
-        max_units_per_semester: float,
+        study_load: str,
         prioritise_available: bool,
         interests: list[str],
     ) -> PlanResult:
         merged = merge_required_courses(self._program_requirements(user_id))
         completed = self._students.completed_course_codes(user_id)
-        to_plan = sorted(merged.required - completed)
+        all_courses = self._catalogue.list_courses()
+        id_by_code = {course["code"]: course["id"] for course in all_courses}
+        trees_by_id = self._catalogue.get_prereq_trees(list(id_by_code.values()))
+        prereq_by_code = {code: trees_by_id.get(cid) for code, cid in id_by_code.items()}
+        to_plan = _expand_with_prerequisites(merged.required - completed, completed, prereq_by_code)
         plannable = self._catalogue.get_plannable_courses(to_plan)
         preferences = PlanPreferences(
             prioritise_available=prioritise_available,
             interest_codes=self._interest_codes(to_plan, interests),
         )
+        target_courses = STUDY_LOAD_COURSE_TARGETS[study_load]
         return build_plan(
             plannable,
             completed=completed,
             start=Semester(start_year, start_semester),
-            max_units_per_semester=max_units_per_semester,
+            max_units_per_semester=target_courses * _ASSUMED_MAX_COURSE_UNITS,
+            target_courses_per_semester=target_courses,
             preferences=preferences,
         )
 
@@ -214,7 +259,7 @@ class PlannerService:
         user_id: str,
         start_year: int,
         start_semester: str,
-        max_units_per_semester: float,
+        study_load: str = "full_time",
         prioritise_available: bool = False,
         interests: list[str] | None = None,
     ) -> dict[str, Any]:
@@ -223,7 +268,7 @@ class PlannerService:
             user_id,
             start_year,
             start_semester,
-            max_units_per_semester,
+            study_load,
             prioritise_available,
             interests or [],
         )
@@ -236,7 +281,7 @@ class PlannerService:
         name: str,
         start_year: int,
         start_semester: str,
-        max_units_per_semester: float,
+        study_load: str = "full_time",
         prioritise_available: bool = False,
         interests: list[str] | None = None,
     ) -> dict[str, Any]:
@@ -244,7 +289,7 @@ class PlannerService:
             user_id,
             start_year,
             start_semester,
-            max_units_per_semester,
+            study_load,
             prioritise_available,
             interests or [],
         )

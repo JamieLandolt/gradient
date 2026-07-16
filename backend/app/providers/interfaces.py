@@ -57,17 +57,6 @@ class RecommendationProvider(Protocol):
     ) -> list[dict[str, Any]]: ...
 
 
-class StudyPlanProvider(Protocol):
-    def generate(
-        self,
-        course_code: str,
-        items: list[dict[str, Any]],
-        target_grade: int,
-        required_average_percent: float | None,
-        start_date: str,
-    ) -> list[dict[str, Any]]: ...
-
-
 class AssistantProvider(Protocol):
     def answer(self, question: str, facts: dict[str, Any]) -> str: ...
 

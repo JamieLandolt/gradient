@@ -84,12 +84,18 @@ export function ImportPage() {
   const queryClient = useQueryClient()
   const [payload, setPayload] = useState('')
   const [file, setFile] = useState<File | null>(null)
+  const [courseCode, setCourseCode] = useState('')
   const [jobId, setJobId] = useState<number | null>(null)
   const [timedOut, setTimedOut] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const submit = useMutation({
     mutationFn: () => {
+      if (courseCode.trim()) {
+        return apiClient.post<IngestionJob>('/ingestion/from-url', {
+          course_code: courseCode.trim(),
+        })
+      }
       if (file) {
         const form = new FormData()
         form.append('file', file)
@@ -146,23 +152,35 @@ export function ImportPage() {
 
   const isPolling = job?.status === 'queued' && !timedOut
   const isWaiting = submit.isPending || isPolling
-  const canSubmit = file !== null || payload.trim().length > 0
+  const canSubmit = file !== null || payload.trim().length > 0 || courseCode.trim().length > 0
+  const pasteOrUploadDisabled = courseCode.trim().length > 0
+  const courseCodeDisabled = file !== null || payload.trim().length > 0
 
   return (
     <main>
       <h1>Import a course profile</h1>
       <p>
-        Upload a course profile (ECP) as a PDF, or paste its text. Gradient extracts the
-        assessment items, weights, hurdles, grade cut-offs, and prerequisites in the
-        background — a curator then verifies them before they drive anyone's projections.
+        Enter a UQ course code to fetch its current profile automatically, upload a course
+        profile (ECP) as a PDF, or paste its text. Gradient extracts the assessment items,
+        weights, hurdles, grade cut-offs, and prerequisites in the background — a curator
+        then verifies them before they drive anyone's projections.
       </p>
       <form onSubmit={handleSubmit}>
-        <label htmlFor="ecp-file">Upload a PDF or .txt</label>
+        <label htmlFor="ecp-course-code">Course code (fetches automatically)</label>
+        <input
+          id="ecp-course-code"
+          value={courseCode}
+          onChange={(e) => setCourseCode(e.target.value)}
+          placeholder="e.g. COMP3506"
+          disabled={courseCodeDisabled}
+        />
+        <label htmlFor="ecp-file">…or upload a PDF or .txt</label>
         <input
           id="ecp-file"
           type="file"
           accept=".pdf,.txt,application/pdf,text/plain"
           onChange={handleFileChange}
+          disabled={pasteOrUploadDisabled}
         />
         <textarea
           aria-label="Course profile text"
@@ -170,7 +188,7 @@ export function ImportPage() {
           value={payload}
           onChange={(e) => setPayload(e.target.value)}
           placeholder={'…or paste:\nCourse code: COMP2140\nCourse title: …\nAssessment:\n- …'}
-          disabled={file !== null}
+          disabled={file !== null || pasteOrUploadDisabled}
         />
         <button type="submit" disabled={!canSubmit || isWaiting}>
           {isWaiting ? 'Extracting…' : 'Extract'}

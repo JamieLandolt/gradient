@@ -10,7 +10,7 @@ from app.api.deps import get_advisory_service
 from app.core.auth import AuthUser, get_current_user
 from app.core.envelope import success_payload
 from app.providers.openai_compatible import AIProviderError
-from app.schemas.api import AssistantAskRequest, RecommendRequest, StudyPlanGenerateRequest
+from app.schemas.api import AssistantAskRequest, RecommendRequest
 from app.services.advisory import AdvisoryService
 
 logger = logging.getLogger(__name__)
@@ -52,50 +52,6 @@ def delete_recommendation(
     advisory: AdvisoryService = Depends(get_advisory_service),
 ) -> dict:
     advisory.delete_recommendation(user.id, recommendation_id)
-    return success_payload({"deleted": True})
-
-
-# ── Study plans (FR-3.8.x) ───────────────────────────────────────────────────
-@router.post("/study-plans/generate")
-def generate_study_plan(
-    request: StudyPlanGenerateRequest,
-    user: AuthUser = Depends(get_current_user),
-    advisory: AdvisoryService = Depends(get_advisory_service),
-) -> dict:
-    return success_payload(
-        advisory.study_plan(
-            user.id,
-            request.enrolment_id,
-            request.target_grade,
-            request.start_date.isoformat() if request.start_date else None,
-        )
-    )
-
-
-@router.get("/study-plans")
-def list_study_plans(
-    user: AuthUser = Depends(get_current_user),
-    advisory: AdvisoryService = Depends(get_advisory_service),
-) -> dict:
-    return success_payload(advisory.list_study_plans(user.id))
-
-
-@router.get("/study-plans/{plan_id}")
-def get_study_plan(
-    plan_id: int,
-    user: AuthUser = Depends(get_current_user),
-    advisory: AdvisoryService = Depends(get_advisory_service),
-) -> dict:
-    return success_payload(advisory.get_study_plan(user.id, plan_id))
-
-
-@router.delete("/study-plans/{plan_id}")
-def delete_study_plan(
-    plan_id: int,
-    user: AuthUser = Depends(get_current_user),
-    advisory: AdvisoryService = Depends(get_advisory_service),
-) -> dict:
-    advisory.delete_study_plan(user.id, plan_id)
     return success_payload({"deleted": True})
 
 

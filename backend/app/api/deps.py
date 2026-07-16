@@ -17,6 +17,7 @@ from app.repositories.students import StudentRepository
 from app.services.advisory import AdvisoryService
 from app.services.ingestion import IngestionService
 from app.services.planner import PlannerService
+from app.services.study_plan import WeeklyStudyPlanService
 from app.services.tracking import TrackingService
 
 
@@ -64,6 +65,14 @@ def get_ingestion_service(
     providers: ProviderBundle = Depends(get_providers_dep),
 ) -> IngestionService:
     return IngestionService(repo, providers)
+
+
+def get_weekly_study_plan_service(
+    students: StudentRepository = Depends(get_student_repo),
+    tracking: TrackingService = Depends(get_tracking_service),
+    artifacts: ArtifactRepository = Depends(get_artifact_repo),
+) -> WeeklyStudyPlanService:
+    return WeeklyStudyPlanService(students, tracking, artifacts)
 
 
 def get_advisory_service(

@@ -14,11 +14,10 @@ import { SessionProvider } from './features/auth/SessionProvider'
 import { GuestCalculatorPage } from './features/calculator/GuestCalculatorPage'
 import { CourseDetailPage } from './features/courses/CourseDetailPage'
 import { DashboardPage } from './features/dashboard/DashboardPage'
+import { DiscoverPage } from './features/discover/DiscoverPage'
 import { HistoryPage } from './features/history/HistoryPage'
 import { ImportPage } from './features/import/ImportPage'
 import { PlannerPage } from './features/planner/PlannerPage'
-import { RecommendationsPage } from './features/recommendations/RecommendationsPage'
-import { SearchPage } from './features/search/SearchPage'
 import { StudyPlanPage } from './features/study-plans/StudyPlanPage'
 import { createQueryClient } from './lib/queryClient'
 
@@ -70,10 +69,9 @@ export default function App() {
                 <Route path="/history" element={<HistoryPage />} />
                 <Route path="/planner" element={<PlannerPage />} />
                 <Route path="/import" element={<ImportPage />} />
-                <Route path="/recommendations" element={<RecommendationsPage />} />
                 <Route path="/study-plans" element={<StudyPlanPage />} />
                 <Route path="/assistant" element={<AssistantPage />} />
-                <Route path="/search" element={<SearchPage />} />
+                <Route path="/discover" element={<DiscoverPage />} />
                 <Route path="/account" element={<AccountPage />} />
               </Route>
             </Route>

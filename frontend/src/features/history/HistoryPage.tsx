@@ -140,11 +140,17 @@ export function HistoryPage() {
 
       <h2>In progress / planned</h2>
       {current.length === 0 && <p className="page-status">No current courses.</p>}
-      <ul>
+      <ul className="card-list">
         {current.map((row) => (
-          <li key={row.enrolment_id}>
-            {row.course_code} — {row.course_title} ({row.year} {row.semester},{' '}
-            {row.status.replace('_', ' ')})
+          <li key={row.enrolment_id} className="course-card">
+            <h3>{row.course_code}</h3>
+            <p>{row.course_title}</p>
+            <p className="page-status">
+              {row.year} {row.semester}
+            </p>
+            <span className={`status-badge status-${row.status}`}>
+              {row.status.replace('_', ' ')}
+            </span>
           </li>
         ))}
       </ul>

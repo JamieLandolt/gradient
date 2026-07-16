@@ -94,6 +94,82 @@ class TestIngestion:
         assert job["error"]
         assert client.get("/api/v1/curator/profile-versions").json()["data"] == []
 
+    def test_url_import_scrapes_then_extracts_a_draft_version(self, monkeypatch):
+        # The network fetch is the only untested-elsewhere piece here (covered
+        # in isolation by test_uq_fetcher.py); stub it so this test exercises
+        # the job/extraction wiring without touching the network.
+        import app.services.ingestion as ingestion_module
+
+        payload = (SAMPLES / "COMP2140_2026S2.txt").read_text()
+        monkeypatch.setattr(ingestion_module, "fetch_ecp_text", lambda code: payload)
+
+        client, _ = make_curator_client()
+
+        response = client.post("/api/v1/ingestion/from-url", json={"course_code": "comp2140"})
+
+        assert response.status_code == 201
+        queued = response.json()["data"]
+        assert queued["status"] == "queued"
+        assert queued["course_code"] == "COMP2140"  # normalised immediately, unlike text/upload
+
+        job = _poll_job(client, queued["id"])
+        assert job["status"] == "extracted"
+        assert job["course_code"] == "COMP2140"
+
+    def test_url_import_fails_the_job_when_no_current_profile_is_found(self, monkeypatch):
+        import app.services.ingestion as ingestion_module
+        from app.ingestion.uq_fetcher import ECPNotFoundError
+
+        def raise_not_found(code):
+            raise ECPNotFoundError(f"No current course profile found for {code}")
+
+        monkeypatch.setattr(ingestion_module, "fetch_ecp_text", raise_not_found)
+
+        client, _ = make_curator_client()
+        queued = client.post(
+            "/api/v1/ingestion/from-url", json={"course_code": "GHOST9999"}
+        ).json()["data"]
+
+        job = _poll_job(client, queued["id"])
+        assert job["status"] == "failed"
+        assert "No current course profile found" in job["error"]
+
+    def test_url_import_rejects_an_invalid_course_code(self):
+        client, _, _ = build_client(user=ALICE)
+
+        response = client.post(
+            "/api/v1/ingestion/from-url", json={"course_code": "not a code!"}
+        )
+
+        assert response.status_code == 422
+
+    def test_embedding_failure_does_not_fail_the_ingestion_job(self, monkeypatch):
+        # Embeddings only feed semantic search; a flaky hosted-API call there
+        # (e.g. the intermittent Bailian "SSL: UNEXPECTED_EOF") shouldn't sink
+        # an otherwise-successful extraction + draft.
+        from app.providers.mock.embeddings import MockEmbeddingProvider
+
+        def raise_ssl_error(self, text):
+            raise RuntimeError(
+                "AI request to /embeddings failed: [SSL: UNEXPECTED_EOF_WHILE_READING]"
+            )
+
+        monkeypatch.setattr(MockEmbeddingProvider, "embed", raise_ssl_error)
+
+        client, _ = make_curator_client()
+        payload = (SAMPLES / "COMP2140_2026S2.txt").read_text()
+
+        queued = client.post(
+            "/api/v1/ingestion/jobs", json={"source_type": "text", "payload": payload}
+        ).json()["data"]
+
+        job = _poll_job(client, queued["id"])
+        assert job["status"] == "extracted"
+        assert job["course_code"] == "COMP2140"
+
+        drafts = client.get("/api/v1/curator/profile-versions").json()["data"]
+        assert len(drafts) == 1
+
     def test_students_cannot_use_curator_endpoints(self):
         client, _, students = build_client(user=ALICE)
         students.profiles[ALICE.id] = {
@@ -138,23 +214,88 @@ class TestAdvisory:
         )
         assert "advisory" in data["disclaimer"]
 
-    def test_study_plan_generation(self):
+    def test_regenerating_with_unchanged_inputs_hits_the_cache(self):
+        # Same user/interests/limit twice in a row should return the exact same
+        # persisted recommendation (same id) instead of generating + saving a
+        # new one each time (docs/REVIEW_efficiency_ux.md perf finding).
         client, _, _ = build_client(user=ALICE)
-        enrolment = client.post(
+        body = {"interests": ["algorithms"], "limit": 3}
+
+        first = client.post("/api/v1/recommendations/generate", json=body).json()["data"]
+        second = client.post("/api/v1/recommendations/generate", json=body).json()["data"]
+        assert second["id"] == first["id"]
+
+        changed = client.post(
+            "/api/v1/recommendations/generate",
+            json={"interests": ["genetics"], "limit": 3},
+        ).json()["data"]
+        assert changed["id"] != first["id"]
+
+    def test_weekly_study_plan_generation(self):
+        client, _, _ = build_client(user=ALICE)
+        client.post(
             "/api/v1/enrolments",
             json={"course_code": "CSSE1001", "year": 2026, "semester": "S1"},
-        ).json()["data"]
+        )
+
+        study_hours = client.put(
+            "/api/v1/study-availability",
+            json={"slots": [
+                {"day_of_week": 0, "start_hour": h, "slot_type": "study"}
+                for h in range(9, 17)
+            ]},
+        )
+        assert study_hours.status_code == 200
 
         response = client.post(
-            "/api/v1/study-plans/generate",
-            json={"enrolment_id": enrolment["id"], "target_grade": 6,
-                  "start_date": "2026-03-01"},
+            "/api/v1/study-plans/generate", json={"week_start": "2026-03-02"}
         )
 
         assert response.status_code == 200
         plan = response.json()["data"]
-        assert plan["course_code"] == "CSSE1001"
-        assert plan["sessions"]
+        assert plan["blocks"]
+        assert all(b["course_code"] == "CSSE1001" for b in plan["blocks"])
+
+    def test_remaining_assessments_excludes_graded_items_and_targets_roundtrip(self):
+        client, _, _ = build_client(user=ALICE)
+        enrolment = _enrol(client)
+
+        remaining = client.get("/api/v1/study-plans/remaining-assessments").json()["data"]
+        assert len(remaining) == 3  # all of CSSE1001_ASSESSMENTS, ungraded
+        assert all(item["target_percent"] is None for item in remaining)
+
+        first = remaining[0]
+        saved = client.put(
+            "/api/v1/study-plans/targets",
+            json={"targets": [{
+                "enrolment_id": first["enrolment_id"],
+                "assessment_id": first["assessment_id"],
+                "custom_assessment_id": first["custom_assessment_id"],
+                "target_percent": 85,
+            }]},
+        )
+        assert saved.status_code == 200
+        updated = client.get("/api/v1/study-plans/remaining-assessments").json()["data"]
+        updated_first = next(i for i in updated if i["name"] == first["name"])
+        assert updated_first["target_percent"] == 85
+
+        # Grading an item removes it from what's "remaining".
+        client.put(
+            f"/api/v1/enrolments/{enrolment['id']}/grades",
+            json={"assessment_id": first["assessment_id"], "score": 90},
+        )
+        after_grading = client.get("/api/v1/study-plans/remaining-assessments").json()["data"]
+        assert len(after_grading) == 2
+
+    def test_generate_fails_without_any_study_slots(self):
+        client, _, _ = build_client(user=ALICE)
+        _enrol(client)
+
+        response = client.post(
+            "/api/v1/study-plans/generate", json={"week_start": "2026-03-02"}
+        )
+
+        assert response.status_code == 422
 
     def test_search_returns_similar_courses(self):
         catalogue = FakeCatalogueRepository()
@@ -219,39 +360,44 @@ class TestPersistence:
 
         assert client.get("/api/v1/recommendations/latest").json()["data"] is None
 
-    def test_study_plan_persists_lists_and_is_fetchable(self):
+    def test_weekly_study_plan_persists_lists_and_is_fetchable(self):
         client, _, _ = build_client(user=ALICE)
-        enrolment = _enrol(client)
+        _enrol(client)
+        client.put(
+            "/api/v1/study-availability",
+            json={"slots": [{"day_of_week": 0, "start_hour": 9, "slot_type": "study"}]},
+        )
 
         generated = client.post(
-            "/api/v1/study-plans/generate",
-            json={"enrolment_id": enrolment["id"], "target_grade": 6,
-                  "start_date": "2026-03-01"},
+            "/api/v1/study-plans/generate", json={"week_start": "2026-03-02"}
         ).json()["data"]
         assert isinstance(generated["id"], int)
 
         listing = client.get("/api/v1/study-plans").json()["data"]
         assert listing[0]["id"] == generated["id"]
-        assert listing[0]["course_code"] == "CSSE1001"
+        assert listing[0]["week_start"] == "2026-03-02"
 
         full = client.get(f"/api/v1/study-plans/{generated['id']}").json()["data"]
-        assert full["course_code"] == "CSSE1001"
-        assert full["sessions"]
+        assert full["blocks"]
+        assert full["blocks"][0]["course_code"] == "CSSE1001"
 
         assert client.delete(f"/api/v1/study-plans/{generated['id']}").status_code == 200
         assert client.get("/api/v1/study-plans").json()["data"] == []
 
-    def test_another_user_cannot_read_a_saved_study_plan(self):
+    def test_another_user_cannot_read_a_saved_weekly_study_plan(self):
         catalogue = FakeCatalogueRepository()
         students = FakeStudentRepository(catalogue)
         artifacts = FakeArtifactRepository(catalogue, students)
         alice, _, _ = build_client(
             catalogue=catalogue, students=students, artifacts=artifacts, user=ALICE
         )
-        enrolment = _enrol(alice)
+        _enrol(alice)
+        alice.put(
+            "/api/v1/study-availability",
+            json={"slots": [{"day_of_week": 0, "start_hour": 9, "slot_type": "study"}]},
+        )
         plan = alice.post(
-            "/api/v1/study-plans/generate",
-            json={"enrolment_id": enrolment["id"], "target_grade": 6},
+            "/api/v1/study-plans/generate", json={"week_start": "2026-03-02"}
         ).json()["data"]
 
         bob, _, _ = build_client(

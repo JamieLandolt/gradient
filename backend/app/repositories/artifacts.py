@@ -14,10 +14,10 @@ from supabase import Client
 _RECOMMENDATION_ITEM_SELECT = (
     "course_id, rank, reason, prereq_status, courses(code, title)"
 )
-_STUDY_SESSION_SELECT = (
-    "assessment_id, custom_assessment_id, session_date, duration_minutes, focus, sort_order"
+_WEEKLY_BLOCK_SELECT = (
+    "day_of_week, start_hour, enrolment_id, assessment_id, custom_assessment_id, "
+    "focus, sort_order, enrolments(course_offerings(courses(code, title)))"
 )
-_ENROLMENT_COURSE_SELECT = "enrolments(course_offerings(courses(code, title)))"
 _DEGREE_ENTRY_SELECT = "semester_index, semester_label, explanation, courses(code, units)"
 
 
@@ -85,64 +85,60 @@ class ArtifactRepository:
         )
         return bool(rows)
 
-    # ── Study plans (FR-3.8.x) ────────────────────────────────────────────
-    def save_study_plan(
-        self,
-        user_id: str,
-        enrolment_id: int | None,
-        target_grade: int,
-        provider: str,
-        sessions: list[dict[str, Any]],
+    # ── Weekly study plans (FR-3.8.x) ──────────────────────────────────────
+    def save_weekly_study_plan(
+        self, user_id: str, week_start: str, blocks: list[dict[str, Any]]
     ) -> dict[str, Any]:
+        """Regenerating the same week replaces it outright (delete + fresh
+        insert, not upsert) so `generated_at` always reflects this run."""
+        existing = (
+            self._db.table("weekly_study_plans")
+            .select("id")
+            .eq("user_id", user_id)
+            .eq("week_start", week_start)
+            .execute()
+            .data
+        )
+        if existing:
+            self._db.table("weekly_study_plans").delete().eq("id", existing[0]["id"]).execute()
         record = (
-            self._db.table("study_plans")
-            .insert(
-                {
-                    "user_id": user_id,
-                    "enrolment_id": enrolment_id,
-                    "target_grade": target_grade,
-                    "provider": provider,
-                }
-            )
+            self._db.table("weekly_study_plans")
+            .insert({"user_id": user_id, "week_start": week_start})
             .execute()
             .data[0]
         )
-        session_rows = [
+        block_rows = [
             {
-                "study_plan_id": record["id"],
-                # Sessions reference free-text assessment names, not ids; store the
-                # figure-carrying `focus` text and leave the FKs null (allowed by
-                # the num_nonnulls(...) <= 1 check).
-                "session_date": session["session_date"],
-                "duration_minutes": session["duration_minutes"],
-                "focus": session["focus"],
-                "sort_order": session.get("sort_order", order),
+                "weekly_study_plan_id": record["id"],
+                "day_of_week": block["day_of_week"],
+                "start_hour": block["start_hour"],
+                "enrolment_id": block.get("enrolment_id"),
+                "assessment_id": block.get("assessment_id"),
+                "custom_assessment_id": block.get("custom_assessment_id"),
+                "focus": block["focus"],
+                "sort_order": order,
             }
-            for order, session in enumerate(sessions)
+            for order, block in enumerate(blocks)
         ]
-        if session_rows:
-            self._db.table("study_sessions").insert(session_rows).execute()
+        if block_rows:
+            self._db.table("weekly_study_blocks").insert(block_rows).execute()
         return record
 
-    def list_study_plans(self, user_id: str) -> list[dict[str, Any]]:
+    def list_weekly_study_plans(self, user_id: str) -> list[dict[str, Any]]:
         return (
-            self._db.table("study_plans")
-            .select(
-                "id, enrolment_id, target_grade, provider, generated_at, "
-                + _ENROLMENT_COURSE_SELECT
-            )
+            self._db.table("weekly_study_plans")
+            .select("id, week_start, generated_at")
             .eq("user_id", user_id)
-            .order("generated_at", desc=True)
+            .order("week_start", desc=True)
             .execute()
             .data
         )
 
-    def get_study_plan(self, user_id: str, plan_id: int) -> dict[str, Any] | None:
+    def get_weekly_study_plan(self, user_id: str, plan_id: int) -> dict[str, Any] | None:
         rows = (
-            self._db.table("study_plans")
+            self._db.table("weekly_study_plans")
             .select(
-                f"id, enrolment_id, target_grade, provider, generated_at, "
-                f"{_ENROLMENT_COURSE_SELECT}, study_sessions({_STUDY_SESSION_SELECT})"
+                f"id, week_start, generated_at, weekly_study_blocks({_WEEKLY_BLOCK_SELECT})"
             )
             .eq("user_id", user_id)
             .eq("id", plan_id)
@@ -151,9 +147,9 @@ class ArtifactRepository:
         )
         return rows[0] if rows else None
 
-    def delete_study_plan(self, user_id: str, plan_id: int) -> bool:
+    def delete_weekly_study_plan(self, user_id: str, plan_id: int) -> bool:
         rows = (
-            self._db.table("study_plans")
+            self._db.table("weekly_study_plans")
             .delete()
             .eq("user_id", user_id)
             .eq("id", plan_id)

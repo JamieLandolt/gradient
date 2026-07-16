@@ -318,55 +318,6 @@ class OpenAICompatibleRecommendationProvider:
         return results
 
 
-# ── Study plans (FR-3.8.x) ───────────────────────────────────────────────────
-_STUDY_PLAN_SYSTEM = (
-    "You build a personalised study schedule. Given a course, a start date, a target grade, "
-    "the required average percent (already computed — cite it, do not recompute), and the "
-    "remaining assessment items (name, weight, due_date), produce study sessions leading up to "
-    "each item. Return ONLY a JSON object {\"sessions\": [{session_date (YYYY-MM-DD), "
-    "duration_minutes, focus, assessment_name}]}. Weight heavier and sooner items more. Every "
-    "figure you mention must come from the input."
-)
-
-
-class OpenAICompatibleStudyPlanProvider:
-    def __init__(self, client: OpenAICompatibleClient):
-        self._client = client
-
-    def generate(
-        self,
-        course_code: str,
-        items: list[dict[str, Any]],
-        target_grade: int,
-        required_average_percent: float | None,
-        start_date: str,
-    ) -> list[dict[str, Any]]:
-        remaining = [item for item in items if item.get("score") is None]
-        payload = {
-            "course_code": course_code,
-            "start_date": start_date,
-            "target_grade": target_grade,
-            "required_average_percent": required_average_percent,
-            "assessments": [
-                {"name": i["name"], "weight": i["weight"], "due_date": i.get("due_date")}
-                for i in remaining
-            ],
-        }
-        reply = self._client.chat_json(_STUDY_PLAN_SYSTEM, json.dumps(payload))
-        sessions: list[dict[str, Any]] = []
-        for order, session in enumerate(reply.get("sessions", [])):
-            sessions.append(
-                {
-                    "session_date": session.get("session_date"),
-                    "duration_minutes": int(session.get("duration_minutes", 60)),
-                    "focus": session.get("focus", ""),
-                    "assessment_name": session.get("assessment_name", ""),
-                    "sort_order": order,
-                }
-            )
-        return sessions
-
-
 # ── Assistant (FR-3.9.3) ─────────────────────────────────────────────────────
 _ASSISTANT_SYSTEM = (
     "You are Gradient's study assistant. Answer the student's question using ONLY the verified "

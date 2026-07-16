@@ -342,6 +342,26 @@ a { color: var(--accent-bright); }
 .prereq-partially_met { color: var(--warn); }
 .prereq-not_met { color: var(--danger); }
 
+.status-badge {
+  display: inline-block;
+  padding: 0.14rem 0.55rem;
+  border-radius: 5px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  font-family: var(--mono);
+  letter-spacing: 0.03em;
+}
+.status-in_progress {
+  background: rgba(139, 92, 246, 0.16);
+  color: var(--accent-bright);
+  border: 1px solid rgba(139, 92, 246, 0.35);
+}
+.status-planned {
+  background: rgba(164, 147, 201, 0.14);
+  color: var(--muted);
+  border: 1px solid var(--border-strong);
+}
+
 .hurdle-tag {
   margin-left: 0.5rem;
   font-size: 0.72rem;
@@ -353,7 +373,96 @@ a { color: var(--accent-bright); }
   border: 1px solid rgba(251, 191, 36, 0.35);
 }
 
+/* ── Mode toggle (Discover) ── */
+.mode-toggle {
+  display: inline-flex;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 1rem;
+}
+.mode-tab {
+  padding: 0.4rem 1rem;
+  border-radius: 7px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 160ms ease, color 160ms ease;
+}
+.mode-tab.active {
+  background: var(--accent);
+  color: white;
+}
+
+/* ── Weekly study plan ── */
+.week-grid {
+  display: grid;
+  grid-template-columns: 3rem repeat(7, 1fr);
+  gap: 2px;
+  margin: 0.75rem 0;
+  font-size: 0.78rem;
+}
+.week-grid-header {
+  font-weight: 600;
+  text-align: center;
+  padding: 0.2rem;
+}
+.week-grid-hour-label {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--muted);
+  padding: 0.2rem;
+  text-align: right;
+}
+.week-slot {
+  min-height: 1.5rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  padding: 0;
+  overflow: hidden;
+}
+.week-slot:not(:disabled) { cursor: pointer; }
+.week-slot.study {
+  background: rgba(139, 92, 246, 0.16);
+  border-color: rgba(139, 92, 246, 0.4);
+}
+.week-slot.blocked {
+  background: rgba(251, 113, 133, 0.16);
+  border-color: rgba(251, 113, 133, 0.4);
+}
+.week-slot.filled {
+  background: rgba(139, 92, 246, 0.3);
+  border-color: var(--accent);
+  font-size: 0.62rem;
+  font-weight: 600;
+}
+.tag-study, .tag-blocked {
+  font-weight: 600;
+  padding: 0.05rem 0.35rem;
+  border-radius: 4px;
+}
+.tag-study { background: rgba(139, 92, 246, 0.18); color: var(--accent-bright); }
+.tag-blocked { background: rgba(251, 113, 133, 0.18); color: var(--danger); }
+
 /* ── Planner ── */
+details {
+  margin: 0.5rem 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+}
+details summary {
+  cursor: pointer;
+  color: var(--warn);
+  font-weight: 600;
+}
+details p { margin: 0.4rem 0 0; }
+
 .semester-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
@@ -496,6 +605,24 @@ textarea { width: 100%; font-family: var(--mono); font-size: 0.88rem; margin-bot
 .chat-assistant {
   align-self: flex-start;
   background: var(--surface-raised);
+}
+.typing-indicator {
+  display: inline-flex;
+  gap: 0.25rem;
+  margin-top: 0.4rem;
+}
+.typing-indicator span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--muted);
+  animation: typing-bounce 1.1s ease-in-out infinite;
+}
+.typing-indicator span:nth-child(2) { animation-delay: 0.15s; }
+.typing-indicator span:nth-child(3) { animation-delay: 0.3s; }
+@keyframes typing-bounce {
+  0%, 60%, 100% { opacity: 0.35; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-3px); }
 }
 
 /* ── Planner: placement explanations & preferences ── */

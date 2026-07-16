@@ -10,6 +10,7 @@ import logging
 from typing import Any
 
 from app.core.errors import NotFoundError, ValidationFailedError
+from app.ingestion.uq_fetcher import fetch_ecp_text
 from app.providers.factory import ProviderBundle
 from app.repositories.ingestion import IngestionRepository
 
@@ -52,6 +53,33 @@ class IngestionService:
         except Exception as exc:  # noqa: BLE001 — background task must not propagate
             self._record_failure(job_id, exc)
 
+    def create_url_job(self, user_id: str, course_code: str) -> dict[str, Any]:
+        """Queue a course code for ECP web-scraping (FR-3.5.1). Unlike text/upload,
+        the source text isn't known yet — the scrape itself happens in
+        run_url_extraction (a background task), since it's a network call to an
+        external site rather than fast local parsing."""
+        code = course_code.strip().upper()
+        if not code:
+            raise ValidationFailedError("Provide a course code")
+        return self._repo.create_job(
+            user_id,
+            {"course_code": code, "source_type": "url",
+             "source_ref": code, "payload": "", "status": "queued"},
+        )
+
+    def run_url_extraction(self, job_id: int, course_code: str) -> None:
+        """Scrape the course's current ECP, then run the same background
+        extraction pipeline as a paste/upload (FR-3.5.1). The fetch itself is
+        guarded separately from run_extraction's own guard, since a failure here
+        (robots disallowed, no current profile, network error) happens before
+        there is any payload to extract."""
+        try:
+            text = fetch_ecp_text(course_code)
+        except Exception as exc:  # noqa: BLE001 — background task must not propagate
+            self._record_failure(job_id, exc)
+            return
+        self.run_extraction(job_id, text, "url", course_code)
+
     def _record_failure(self, job_id: int, exc: Exception) -> None:
         """Best-effort: flip the job to ``failed``. If even this write raises
         (e.g. the DB is down — the very cause of the failure), swallow and log so
@@ -86,13 +114,24 @@ class IngestionService:
             self._repo.replace_prereq_tree(
                 course["id"], extracted.prerequisite_raw, extracted.prerequisite_tree
             )
-        self._repo.upsert_embedding(
-            course["id"],
-            self._providers.embeddings.embed(
-                f"{course['code']} {extracted.course_title} {extracted.description}"
-            ),
-            self._providers.embeddings.model_name,
-        )
+        # Embedding only feeds semantic search — it's not needed for the draft
+        # to be valid or curator-reviewable, so a flaky hosted-API call here
+        # (the AI provider already retries transient errors, e.g. the known
+        # intermittent Bailian "SSL: UNEXPECTED_EOF") shouldn't fail the whole
+        # ingestion job. The course is just unsearchable until re-embedded.
+        try:
+            self._repo.upsert_embedding(
+                course["id"],
+                self._providers.embeddings.embed(
+                    f"{course['code']} {extracted.course_title} {extracted.description}"
+                ),
+                self._providers.embeddings.model_name,
+            )
+        except Exception:  # noqa: BLE001 — non-fatal, see comment above
+            logger.warning(
+                "Embedding failed for course %s (job %s); draft saved without it",
+                course["code"], job_id, exc_info=True,
+            )
         self._repo.update_job(
             job_id,
             {"status": "extracted", "course_code": course["code"],

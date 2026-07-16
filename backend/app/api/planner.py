@@ -53,7 +53,7 @@ async def sequence(
             user.id,
             start_year=request.start_year,
             start_semester=request.start_semester,
-            max_units_per_semester=request.max_units_per_semester,
+            study_load=request.study_load,
             prioritise_available=request.prioritise_available,
             interests=request.interests,
         )
@@ -80,7 +80,7 @@ async def save_plan(
             name=request.name,
             start_year=request.start_year,
             start_semester=request.start_semester,
-            max_units_per_semester=request.max_units_per_semester,
+            study_load=request.study_load,
             prioritise_available=request.prioritise_available,
             interests=request.interests,
         )

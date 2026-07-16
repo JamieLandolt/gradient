@@ -8,20 +8,17 @@ from app.providers.interfaces import (
     EmbeddingProvider,
     ExtractionProvider,
     RecommendationProvider,
-    StudyPlanProvider,
 )
 from app.providers.mock.assistant import MockAssistantProvider
 from app.providers.mock.embeddings import MockEmbeddingProvider
 from app.providers.mock.extraction import MockExtractionProvider
 from app.providers.mock.recommendations import MockRecommendationProvider
-from app.providers.mock.study_plans import MockStudyPlanProvider
 from app.providers.openai_compatible import (
     OpenAICompatibleAssistantProvider,
     OpenAICompatibleClient,
     OpenAICompatibleEmbeddingProvider,
     OpenAICompatibleExtractionProvider,
     OpenAICompatibleRecommendationProvider,
-    OpenAICompatibleStudyPlanProvider,
 )
 
 
@@ -30,7 +27,8 @@ class ProviderBundle:
     extraction: ExtractionProvider
     embeddings: EmbeddingProvider
     recommendations: RecommendationProvider
-    study_plans: StudyPlanProvider
+    # Weekly study plans (FR-3.8.x) are fully deterministic (no AI provider) —
+    # see app.domain.study.weekly_planner.
     assistant: AssistantProvider
     name: str
 
@@ -48,7 +46,6 @@ def _get_openai_compatible_bundle(settings: Settings) -> ProviderBundle:
             extraction=OpenAICompatibleExtractionProvider(client),
             embeddings=OpenAICompatibleEmbeddingProvider(client, settings.ai_embedding_model),
             recommendations=OpenAICompatibleRecommendationProvider(client),
-            study_plans=OpenAICompatibleStudyPlanProvider(client),
             assistant=OpenAICompatibleAssistantProvider(client),
             name="openai_compatible",
         )
@@ -61,7 +58,6 @@ def get_providers(settings: Settings) -> ProviderBundle:
             extraction=MockExtractionProvider(),
             embeddings=MockEmbeddingProvider(),
             recommendations=MockRecommendationProvider(),
-            study_plans=MockStudyPlanProvider(),
             assistant=MockAssistantProvider(),
             name="mock",
         )

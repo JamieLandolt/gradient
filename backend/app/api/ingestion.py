@@ -10,7 +10,7 @@ from app.core.auth import AuthUser, get_current_user
 from app.core.envelope import success_payload
 from app.core.errors import ValidationFailedError
 from app.ingestion.pdf import extract_upload_text
-from app.schemas.api import IngestionSubmitRequest
+from app.schemas.api import IngestionSubmitRequest, IngestionUrlRequest
 from app.services.ingestion import IngestionService
 
 logger = logging.getLogger(__name__)
@@ -84,6 +84,20 @@ async def upload_job(
     ref = source_ref or (file.filename or "")
     job = ingestion.create_job(user.id, source_type="upload", payload=text, source_ref=ref)
     background_tasks.add_task(ingestion.run_extraction, job["id"], text, "upload", ref)
+    return success_payload(job)
+
+
+@router.post("/ingestion/from-url", status_code=201)
+def submit_url_job(
+    request: IngestionUrlRequest,
+    background_tasks: BackgroundTasks,
+    user: AuthUser = Depends(get_current_user),
+    ingestion: IngestionService = Depends(get_ingestion_service),
+) -> dict:
+    """Queue a course code for ECP web-scraping (FR-3.5.1). Returns ``queued``
+    at once; the scrape + extraction run in the background, same as a paste."""
+    job = ingestion.create_url_job(user.id, request.course_code)
+    background_tasks.add_task(ingestion.run_url_extraction, job["id"], request.course_code)
     return success_payload(job)
 
 

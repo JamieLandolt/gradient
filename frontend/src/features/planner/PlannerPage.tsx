@@ -20,6 +20,10 @@ const PREREQ_LABELS: Record<PrereqStatusRow['prereq_status'], string> = {
 type PlanLike = Pick<PlanSequence, 'feasible' | 'semesters' | 'diagnostics'>
 
 function PlanView({ plan }: { plan: PlanLike }) {
+  const errors = plan.diagnostics.filter((d) => d.severity === 'error')
+  const info = plan.diagnostics.filter((d) => d.severity === 'info')
+  const warnings = plan.diagnostics.filter((d) => d.severity === 'warning')
+
   return (
     <div aria-live="polite">
       {!plan.feasible && (
@@ -27,23 +31,39 @@ function PlanView({ plan }: { plan: PlanLike }) {
           This plan is not feasible — see the issues below.
         </p>
       )}
-      {plan.diagnostics.map((diagnostic) => (
-        <p
-          key={diagnostic.message}
-          className={diagnostic.severity === 'error' ? 'form-error' : 'hurdle-warning'}
-        >
+      {errors.map((diagnostic) => (
+        <p key={diagnostic.message} className="form-error">
           {diagnostic.message}
         </p>
       ))}
+      {info.map((diagnostic) => (
+        <p key={diagnostic.message} className="page-status">
+          {diagnostic.message}
+        </p>
+      ))}
+      {warnings.length > 0 && (
+        <details>
+          <summary>
+            {warnings.length} prerequisite{warnings.length !== 1 ? 's' : ''}{' '}
+            {warnings.length !== 1 ? 'need' : 'needs'} manual checking
+          </summary>
+          {warnings.map((diagnostic) => (
+            <p key={diagnostic.message} className="hurdle-warning">
+              {diagnostic.message}
+            </p>
+          ))}
+        </details>
+      )}
       <div className="semester-grid">
         {plan.semesters.map((semester) => (
           <div key={semester.label} className="semester-column">
             <h3>{semester.label}</h3>
             {semester.entries.length === 0 && <p className="page-status">—</p>}
-            <ul>
+            <ul className="session-list">
               {semester.entries.map((entry) => (
                 <li key={entry.course_code}>
-                  {entry.course_code} ({entry.units} units)
+                  <strong>{entry.course_code}</strong>{' '}
+                  <span className="page-status">({entry.units} units)</span>
                   {entry.explanation && (
                     <span className="entry-explanation">{entry.explanation}</span>
                   )}
@@ -164,6 +184,7 @@ function SequencePlanner() {
   const queryClient = useQueryClient()
   const [startYear, setStartYear] = useState(2026)
   const [startSemester, setStartSemester] = useState<'S1' | 'S2'>('S2')
+  const [studyLoad, setStudyLoad] = useState<'full_time' | 'part_time'>('full_time')
   const [prioritiseAvailable, setPrioritiseAvailable] = useState(false)
   const [interests, setInterests] = useState('')
   const [planName, setPlanName] = useState('My plan')
@@ -175,6 +196,7 @@ function SequencePlanner() {
     return {
       start_year: startYear,
       start_semester: startSemester,
+      study_load: studyLoad,
       prioritise_available: prioritiseAvailable,
       interests: interests
         .split(',')
@@ -230,6 +252,14 @@ function SequencePlanner() {
         >
           <option value="S1">S1</option>
           <option value="S2">S2</option>
+        </select>
+        <select
+          aria-label="Study load"
+          value={studyLoad}
+          onChange={(e) => setStudyLoad(e.target.value as 'full_time' | 'part_time')}
+        >
+          <option value="full_time">Full-time (4 courses/semester)</option>
+          <option value="part_time">Part-time (2 courses/semester)</option>
         </select>
         <button type="button" onClick={() => generate.mutate()} disabled={generate.isPending}>
           {generate.isPending ? 'Planning…' : 'Generate plan'}

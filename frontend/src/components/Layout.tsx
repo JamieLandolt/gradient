@@ -44,10 +44,9 @@ export function Layout() {
               <NavLink to="/dashboard">Dashboard</NavLink>
               <NavLink to="/history">History</NavLink>
               <NavLink to="/planner">Planner</NavLink>
-              <NavLink to="/recommendations">Recommendations</NavLink>
               <NavLink to="/study-plans">Study plans</NavLink>
               <NavLink to="/assistant">Assistant</NavLink>
-              <NavLink to="/search">Search</NavLink>
+              <NavLink to="/discover">Discover</NavLink>
               <NavLink to="/import">Import</NavLink>
               <NavLink to="/account">Account</NavLink>
               <button type="button" className="link-button" onClick={() => void signOut()}>

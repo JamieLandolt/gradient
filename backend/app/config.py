@@ -39,7 +39,9 @@ class Settings(BaseSettings):
     ai_embedding_model: str = Field(default="text-embedding-v3", alias="AI_EMBEDDING_MODEL")
     embedding_dim: int = Field(default=1024, alias="EMBEDDING_DIM")
     ai_request_timeout_s: float = Field(default=30.0, alias="AI_REQUEST_TIMEOUT_S")
-    ai_max_retries: int = Field(default=1, alias="AI_MAX_RETRIES")
+    # Bailian intermittently drops connections mid-read ("SSL: UNEXPECTED_EOF");
+    # a single retry wasn't always enough (see docs/HANDOVER.md).
+    ai_max_retries: int = Field(default=3, alias="AI_MAX_RETRIES")
 
     cors_origins: str = Field(default="http://localhost:5173", alias="CORS_ORIGINS")
 

@@ -172,6 +172,67 @@ class StudentRepository:
         )
         return bool(rows)
 
+    # ── Assessment targets (FR-3.8.x): a target mark per item, distinct from
+    # `grades` (an already-received mark) — can exist before the item is due.
+    def list_assessment_targets(
+        self, user_id: str, enrolment_ids: list[int]
+    ) -> list[dict[str, Any]]:
+        if not enrolment_ids:
+            return []
+        return (
+            self._db.table("assessment_targets")
+            .select("id, enrolment_id, assessment_id, custom_assessment_id, target_percent")
+            .eq("user_id", user_id)
+            .in_("enrolment_id", enrolment_ids)
+            .execute()
+            .data
+        )
+
+    def upsert_assessment_target(
+        self,
+        user_id: str,
+        enrolment_id: int,
+        target_percent: float,
+        assessment_id: int | None = None,
+        custom_assessment_id: int | None = None,
+    ) -> dict[str, Any]:
+        conflict = "enrolment_id,assessment_id" if assessment_id else (
+            "enrolment_id,custom_assessment_id"
+        )
+        row = {
+            "user_id": user_id,
+            "enrolment_id": enrolment_id,
+            "assessment_id": assessment_id,
+            "custom_assessment_id": custom_assessment_id,
+            "target_percent": target_percent,
+        }
+        return (
+            self._db.table("assessment_targets")
+            .upsert(row, on_conflict=conflict)
+            .execute()
+            .data[0]
+        )
+
+    # ── Weekly study availability (FR-3.8.x): a reusable weekly time-block
+    # template (blocked vs study hours), edited as a whole.
+    def list_study_availability(self, user_id: str) -> list[dict[str, Any]]:
+        return (
+            self._db.table("study_availability")
+            .select("day_of_week, start_hour, slot_type")
+            .eq("user_id", user_id)
+            .execute()
+            .data
+        )
+
+    def replace_study_availability(
+        self, user_id: str, slots: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        self._db.table("study_availability").delete().eq("user_id", user_id).execute()
+        if not slots:
+            return []
+        rows = [{**slot, "user_id": user_id} for slot in slots]
+        return self._db.table("study_availability").insert(rows).execute().data
+
     # ── Programs (FR-3.6.3) ───────────────────────────────────────────────
     def get_user_programs(self, user_id: str) -> list[dict[str, Any]]:
         return (

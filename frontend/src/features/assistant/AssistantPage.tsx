@@ -78,22 +78,31 @@ export function AssistantPage() {
 
       {messages.length > 0 && (
         <section className="chat-log" aria-label="Conversation">
-          {messages.map((message, index) => (
-            <div key={index} className={`chat-message chat-${message.role}`}>
-              <span className="chat-role">
-                {message.role === 'user' ? 'You' : 'Assistant'}
-              </span>
-              <p>
-                {message.text ||
-                  (isStreaming && index === messages.length - 1 ? '…' : '')}
-              </p>
-            </div>
-          ))}
+          {messages.map((message, index) => {
+            const isStreamingReply =
+              isStreaming && message.role === 'assistant' && index === messages.length - 1
+            return (
+              <div key={index} className={`chat-message chat-${message.role}`}>
+                <span className="chat-role">
+                  {message.role === 'user' ? 'You' : 'Assistant'}
+                </span>
+                <p>{message.text}</p>
+                {isStreamingReply && (
+                  <span className="typing-indicator" aria-hidden="true">
+                    <span />
+                    <span />
+                    <span />
+                  </span>
+                )}
+              </div>
+            )
+          })}
         </section>
       )}
-      {/* Announce the finished answer once (not on every streamed chunk). */}
+      {/* Announce that the assistant is working, then the finished answer once
+          (not on every streamed chunk). */}
       <p className="sr-only" role="status">
-        {!isStreaming && lastAnswer ? lastAnswer : ''}
+        {isStreaming ? 'Assistant is responding…' : lastAnswer}
       </p>
 
       {error && (

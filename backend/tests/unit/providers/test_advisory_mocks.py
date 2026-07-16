@@ -1,8 +1,7 @@
-"""Determinism and behaviour of the mock recommendation / study-plan providers."""
+"""Determinism and behaviour of the mock recommendation / assistant providers."""
 
 from app.providers.mock.assistant import MockAssistantProvider
 from app.providers.mock.recommendations import MockRecommendationProvider
-from app.providers.mock.study_plans import MockStudyPlanProvider
 
 CANDIDATES = [
     {"code": "COMP4702", "title": "Machine Learning",
@@ -40,45 +39,6 @@ class TestRecommendations:
         args = (CANDIDATES, ["genetics"], frozenset(), 3)
 
         assert provider.recommend(*args) == provider.recommend(*args)
-
-
-class TestStudyPlans:
-    ITEMS = [
-        {"name": "Assignment 2", "weight": 30, "due_date": "2026-05-15", "score": None},
-        {"name": "Final Exam", "weight": 50, "due_date": "2026-06-12", "score": None},
-        {"name": "Assignment 1", "weight": 20, "due_date": "2026-03-27", "score": 80},
-    ]
-
-    def test_sessions_only_for_remaining_items_before_due_dates(self):
-        provider = MockStudyPlanProvider()
-
-        sessions = provider.generate("CSSE1001", self.ITEMS, 5, 55.0, "2026-04-01")
-
-        names = {s["assessment_name"] for s in sessions}
-        assert names == {"Assignment 2", "Final Exam"}
-        for session in sessions:
-            due = next(i["due_date"] for i in self.ITEMS
-                       if i["name"] == session["assessment_name"])
-            assert session["session_date"] <= due
-
-    def test_heavier_items_get_more_sessions(self):
-        provider = MockStudyPlanProvider()
-
-        sessions = provider.generate("CSSE1001", self.ITEMS, 5, 55.0, "2026-04-01")
-
-        exam_count = sum(1 for s in sessions if s["assessment_name"] == "Final Exam")
-        assignment_count = sum(
-            1 for s in sessions if s["assessment_name"] == "Assignment 2"
-        )
-        assert exam_count > assignment_count
-
-    def test_deterministic(self):
-        provider = MockStudyPlanProvider()
-
-        first = provider.generate("CSSE1001", self.ITEMS, 5, 55.0, "2026-04-01")
-        second = provider.generate("CSSE1001", self.ITEMS, 5, 55.0, "2026-04-01")
-
-        assert first == second
 
 
 class TestAssistantStreaming:
