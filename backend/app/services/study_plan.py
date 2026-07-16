@@ -89,6 +89,16 @@ class WeeklyStudyPlanService:
         return items
 
     def set_targets(self, user_id: str, targets: list[dict[str, Any]]) -> None:
+        """Validate and authorise every target before writing any of them.
+
+        `enrolment_id` arrives from the request body, so each one must be proven
+        to belong to the caller: the upsert's conflict key is
+        (enrolment_id, assessment_id) with no user_id in it, and the
+        service-role client bypasses RLS — an unowned id would overwrite another
+        student's target row and reassign it. Mirrors the guard on the sibling
+        grades route (api/enrolments.py). Checking up front also stops a bad
+        target midway through the list from leaving the earlier ones committed.
+        """
         for target in targets:
             has_assessment = target.get("assessment_id") is not None
             has_custom = target.get("custom_assessment_id") is not None
@@ -96,6 +106,10 @@ class WeeklyStudyPlanService:
                 raise ValidationFailedError(
                     "Provide exactly one of assessment_id or custom_assessment_id"
                 )
+        for enrolment_id in dict.fromkeys(target["enrolment_id"] for target in targets):
+            if self._students.get_enrolment(user_id, enrolment_id) is None:
+                raise NotFoundError(f"Enrolment {enrolment_id} not found")
+        for target in targets:
             self._students.upsert_assessment_target(
                 user_id,
                 enrolment_id=target["enrolment_id"],
@@ -106,6 +120,9 @@ class WeeklyStudyPlanService:
 
     # ── Generation ───────────────────────────────────────────────────────────
     def generate(self, user_id: str, week_start: str) -> dict[str, Any]:
+        # One pass only: remaining_assessments costs ~3 queries per in-progress
+        # course, and generate() used to call it and then have the caller call it
+        # again for the same data.
         items = self.remaining_assessments(user_id)
         if not items:
             raise ValidationFailedError(

@@ -7,7 +7,7 @@ Correctness (prerequisite order, caps, offerings) is guaranteed here — never
 by a language model (FR-3.6.7).
 """
 
-from app.domain.planning.graph import find_cycle_members, unlock_counts
+from app.domain.planning.graph import cycle_participants, find_cycle_members, unlock_counts
 from app.domain.planning.models import (
     DEFAULT_MAX_SEMESTERS,
     DEFAULT_MAX_UNITS_PER_SEMESTER,
@@ -18,23 +18,14 @@ from app.domain.planning.models import (
     PlanPreferences,
     PlanResult,
     PlanSemester,
-    PrereqStatus,
     Semester,
 )
-from app.domain.planning.prereq_ast import collect_course_codes, evaluate_prereq
+from app.domain.planning.prereq_ast import collect_course_codes, eligibility, evaluate_prereq
 
 
 def _is_eligible(course: PlannableCourse, done: frozenset[str]) -> tuple[bool, bool]:
     """(eligible, needs_manual_check) against the done set."""
-    evaluation = evaluate_prereq(course.prereq, done)
-    if evaluation.status is PrereqStatus.MET:
-        return True, evaluation.requires_manual_check
-    # An expression blocked ONLY by unparseable note fragments (no outstanding
-    # courses) is let through with a manual-check warning rather than blocking
-    # the plan forever — it is never silently treated as satisfied.
-    if evaluation.requires_manual_check and not evaluation.outstanding:
-        return True, True
-    return False, False
+    return eligibility(course.prereq, done)
 
 
 def _sort_key(
@@ -79,22 +70,48 @@ def _explanation(
 
 def _diagnose_unscheduled(
     course: PlannableCourse,
-    cycle_members: frozenset[str],
+    participants: frozenset[str],
+    unresolvable: frozenset[str],
     known_codes: frozenset[str],
     done: frozenset[str],
+    max_units_per_semester: float,
 ) -> PlanDiagnostic:
-    if course.code in cycle_members:
+    if course.code in participants:
         return PlanDiagnostic(
             severity="error",
             message=f"{course.code} is part of an unsatisfiable prerequisite cycle.",
+        )
+    if course.code in unresolvable:
+        # Downstream of a cycle, not in one. Naming the courses it's waiting on
+        # points the student at the thing they can actually act on.
+        blockers = sorted(collect_course_codes(course.prereq) & unresolvable)
+        blocked_by = f" (it depends on {', '.join(blockers)})" if blockers else ""
+        return PlanDiagnostic(
+            severity="error",
+            message=(
+                f"{course.code} cannot be scheduled because it is blocked by an "
+                f"unsatisfiable prerequisite cycle{blocked_by}."
+            ),
         )
     if not (course.offerings & set(PLANNING_PERIODS)):
         return PlanDiagnostic(
             severity="error",
             message=f"{course.code} is never offered in a plannable study period.",
         )
+    if course.units > max_units_per_semester:
+        return PlanDiagnostic(
+            severity="error",
+            message=(
+                f"{course.code} is {course.units:g} units, which exceeds the "
+                f"{max_units_per_semester:g}-unit limit for a single semester."
+            ),
+        )
     evaluation = evaluate_prereq(course.prereq, done)
-    missing = [code for code in evaluation.outstanding if code not in known_codes]
+    # `outstanding` can carry a None for a malformed course node; joining it
+    # raises TypeError and 500s the whole plan request.
+    missing = [
+        code for code in evaluation.outstanding if code and code not in known_codes
+    ]
     if missing:
         return PlanDiagnostic(
             severity="error",
@@ -120,23 +137,27 @@ def build_plan(
 ) -> PlanResult:
     preferences = preferences or PlanPreferences()
     to_schedule = [course for course in courses if course.code not in completed]
-    cycle_members = find_cycle_members(to_schedule)
+    # `unresolvable` is the cycle PLUS everything downstream of it — all of it
+    # unschedulable — but only `participants` are actually in the loop, and only
+    # they should be blamed for one.
+    unresolvable = find_cycle_members(to_schedule, completed)
+    participants = cycle_participants(to_schedule, unresolvable)
     priorities = unlock_counts(to_schedule)
 
     diagnostics: list[PlanDiagnostic] = []
-    if cycle_members:
+    if participants:
         diagnostics.append(
             PlanDiagnostic(
                 severity="error",
                 message=(
                     "Prerequisite cycle detected involving: "
-                    f"{', '.join(sorted(cycle_members))}."
+                    f"{', '.join(sorted(participants))}."
                 ),
             )
         )
 
     semesters: list[PlanSemester] = []
-    remaining = {course.code: course for course in to_schedule if course.code not in cycle_members}
+    remaining = {course.code: course for course in to_schedule if course.code not in unresolvable}
     done = set(completed)
     current = start
 
@@ -157,6 +178,7 @@ def build_plan(
         entries: list[PlanEntry] = []
         used_units = 0.0
         target_reached = False
+        capped_by_units = False
         for course, needs_check in eligible:
             if (
                 target_courses_per_semester is not None
@@ -165,6 +187,10 @@ def build_plan(
                 target_reached = True
                 break
             if used_units + course.units > max_units_per_semester:
+                # The unit cap, not a shortage of eligible courses, is what
+                # stopped this one going in — the shortfall message below must
+                # not then claim nothing else was eligible.
+                capped_by_units = True
                 continue
             entries.append(
                 PlanEntry(
@@ -185,27 +211,28 @@ def build_plan(
                     )
                 )
 
-        # A target was set (full-time/part-time) but there weren't enough
-        # eligible courses to reach it this semester — distinguish that from
-        # being capped by max_units_per_semester (target_reached), so the
-        # message is only shown when it's genuinely true.
+        # A target was set (full-time/part-time) but this semester fell short of
+        # it. Say WHY, truthfully: too few eligible courses, or the unit cap.
         if (
             target_courses_per_semester is not None
             and not target_reached
             and entries
             and len(entries) < target_courses_per_semester
         ):
-            diagnostics.append(
-                PlanDiagnostic(
-                    severity="info",
-                    message=(
-                        f"Only {len(entries)} course"
-                        f"{'s were' if len(entries) != 1 else ' was'} eligible in "
-                        f"{current.label} — you've taken everything else you're "
-                        f"currently eligible for."
-                    ),
+            if capped_by_units:
+                message = (
+                    f"Only {len(entries)} course"
+                    f"{'s' if len(entries) != 1 else ''} fit within your "
+                    f"{max_units_per_semester:g}-unit limit in {current.label}."
                 )
-            )
+            else:
+                message = (
+                    f"Only {len(entries)} course"
+                    f"{'s were' if len(entries) != 1 else ' was'} eligible in "
+                    f"{current.label} — you've taken everything else you're "
+                    f"currently eligible for."
+                )
+            diagnostics.append(PlanDiagnostic(severity="info", message=message))
 
         semesters.append(PlanSemester(semester=current, entries=tuple(entries)))
         for entry in entries:
@@ -220,12 +247,22 @@ def build_plan(
         semesters.append(PlanSemester(semester=start, entries=()))
 
     known_codes = frozenset(course.code for course in courses) | completed
+    # Every course that didn't make the plan gets its own explanation, including
+    # the ones excluded up front for the cycle — they were previously dropped
+    # with only the one summary line, which made this branch dead code.
     unplaced = list(remaining.values()) + [
-        course for course in to_schedule if course.code in cycle_members
+        course for course in to_schedule if course.code in unresolvable
     ]
-    for course in remaining.values():
+    for course in unplaced:
         diagnostics.append(
-            _diagnose_unscheduled(course, cycle_members, known_codes, frozenset(done))
+            _diagnose_unscheduled(
+                course,
+                participants,
+                unresolvable,
+                known_codes,
+                frozenset(done),
+                max_units_per_semester,
+            )
         )
 
     return PlanResult(

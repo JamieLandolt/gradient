@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from app.core.auth import AuthUser
+from app.domain.planning.models import PrereqNode
 from tests.api.fakes import (
     FakeArtifactRepository,
     FakeCatalogueRepository,
@@ -61,6 +62,60 @@ class TestIngestion:
         drafts = client.get("/api/v1/curator/profile-versions").json()["data"]
         assert len(drafts) == 1
         assert drafts[0]["version_label"] == "2026S2"
+
+    def test_submission_cannot_rewrite_an_existing_courses_prerequisites(self):
+        """Ingestion is open to any authenticated student and the draft is
+        unreviewed, but prerequisites are shared facts the planner treats as
+        authoritative for everyone. Re-submitting an existing course under a new
+        version label used to replace its tree globally."""
+        catalogue = FakeCatalogueRepository()
+        client, _, _ = build_client(catalogue=catalogue, user=BOB)
+        before = catalogue.prereq_trees[catalogue.courses["COMP3506"]["id"]]
+
+        payload = (
+            "Course code: COMP3506\n"
+            "Course title: Algorithms & Data Structures\n"
+            "Units: 2\n"
+            "Semester: Semester 1, 2099\n"
+            "Description: Free marks for everyone.\n"
+            "Assessment:\n"
+            "- Exam | weight: 100% | max mark: 100\n"
+            "Prerequisite: MATH1051\n"
+        )
+        job_id = client.post(
+            "/api/v1/ingestion/jobs", json={"source_type": "text", "payload": payload}
+        ).json()["data"]["id"]
+        job = _poll_job(client, job_id)
+
+        # The draft is still created for the curator to review…
+        assert job["status"] == "extracted"
+        # …but the live prerequisite tree is untouched.
+        assert catalogue.prereq_trees[catalogue.courses["COMP3506"]["id"]] == before
+
+    def test_a_brand_new_course_still_gets_its_prerequisites(self):
+        """The guard must not break the legitimate import path: a course this
+        submission creates has no dependents, so its tree is safe to populate."""
+        catalogue = FakeCatalogueRepository()
+        client, _, _ = build_client(catalogue=catalogue, user=BOB)
+
+        payload = (
+            "Course code: COMP9999\n"
+            "Course title: Brand New Course\n"
+            "Units: 2\n"
+            "Semester: Semester 1, 2026\n"
+            "Description: A course that did not exist before.\n"
+            "Assessment:\n"
+            "- Exam | weight: 100% | max mark: 100\n"
+            "Prerequisite: CSSE1001\n"
+        )
+        job_id = client.post(
+            "/api/v1/ingestion/jobs", json={"source_type": "text", "payload": payload}
+        ).json()["data"]["id"]
+        job = _poll_job(client, job_id)
+
+        assert job["status"] == "extracted"
+        new_id = catalogue.courses["COMP9999"]["id"]
+        assert catalogue.prereq_trees[new_id] == PrereqNode.course("CSSE1001")
 
     def test_resubmission_reuses_the_same_version(self):
         client, _ = make_curator_client()
@@ -404,6 +459,84 @@ class TestPersistence:
             catalogue=catalogue, students=students, artifacts=artifacts, user=BOB
         )
         assert bob.get(f"/api/v1/study-plans/{plan['id']}").status_code == 404
+
+    def test_another_user_cannot_write_a_target_on_someone_elses_enrolment(self):
+        """enrolment_id comes from the request body, and the upsert's conflict
+        key has no user_id in it — so an unchecked id lets one student overwrite
+        (and, on real Supabase, take ownership of) another student's target."""
+        catalogue = FakeCatalogueRepository()
+        students = FakeStudentRepository(catalogue)
+        artifacts = FakeArtifactRepository(catalogue, students)
+        alice, _, _ = build_client(
+            catalogue=catalogue, students=students, artifacts=artifacts, user=ALICE
+        )
+        enrolment = _enrol(alice)
+        items = alice.get("/api/v1/study-plans/remaining-assessments").json()["data"]
+        assessment_id = items[0]["assessment_id"]
+        alice.put(
+            "/api/v1/study-plans/targets",
+            json={
+                "targets": [
+                    {
+                        "enrolment_id": enrolment["id"],
+                        "assessment_id": assessment_id,
+                        "target_percent": 90.0,
+                    }
+                ]
+            },
+        )
+
+        bob, _, _ = build_client(
+            catalogue=catalogue, students=students, artifacts=artifacts, user=BOB
+        )
+        response = bob.put(
+            "/api/v1/study-plans/targets",
+            json={
+                "targets": [
+                    {
+                        "enrolment_id": enrolment["id"],
+                        "assessment_id": assessment_id,
+                        "target_percent": 1.0,
+                    }
+                ]
+            },
+        )
+
+        assert response.status_code == 404
+        after = alice.get("/api/v1/study-plans/remaining-assessments").json()["data"]
+        untouched = next(i for i in after if i["assessment_id"] == assessment_id)
+        assert untouched["target_percent"] == 90.0
+
+    def test_one_invalid_target_rejects_the_whole_batch(self):
+        """Validation must run before any write, or a bad target midway through
+        leaves the earlier ones committed behind a 422."""
+        catalogue = FakeCatalogueRepository()
+        students = FakeStudentRepository(catalogue)
+        artifacts = FakeArtifactRepository(catalogue, students)
+        alice, _, _ = build_client(
+            catalogue=catalogue, students=students, artifacts=artifacts, user=ALICE
+        )
+        enrolment = _enrol(alice)
+        items = alice.get("/api/v1/study-plans/remaining-assessments").json()["data"]
+
+        response = alice.put(
+            "/api/v1/study-plans/targets",
+            json={
+                "targets": [
+                    {
+                        "enrolment_id": enrolment["id"],
+                        "assessment_id": items[0]["assessment_id"],
+                        "target_percent": 70.0,
+                    },
+                    # Neither id supplied — invalid.
+                    {"enrolment_id": enrolment["id"], "target_percent": 80.0},
+                ]
+            },
+        )
+
+        assert response.status_code == 422
+        after = alice.get("/api/v1/study-plans/remaining-assessments").json()["data"]
+        assert all(item["target_percent"] is None for item in after)
 
 
 class TestAssistantStreaming:

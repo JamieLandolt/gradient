@@ -290,3 +290,185 @@ def test_start_semester_alternates_periods():
     with pytest.raises(AssertionError):
         # sanity: helper raises for unscheduled courses
         semester_of(plan, "NOPE")
+
+
+class TestOrPrerequisitesAreNotMistakenForCycles:
+    """Cycle detection used to flatten the prereq AST into one conjunctive set,
+    turning every OR into an AND. UQ prereqs are OR-heavy ("X or Y or
+    equivalent"), so a perfectly orderable plan got reported as cyclic and the
+    course plus its whole downstream cone was dropped."""
+
+    def test_an_or_branch_satisfied_inside_a_loop_is_not_a_cycle(self):
+        # MATH1052 needs (MATH1051 or MATH1071); MATH1071 needs MATH1052.
+        # Taking MATH1051 satisfies the OR, so everything is orderable.
+        courses = [
+            course("MATH1051"),
+            course(
+                "MATH1052",
+                prereq=PrereqNode.any_of(
+                    PrereqNode.course("MATH1051"), PrereqNode.course("MATH1071")
+                ),
+            ),
+            course("MATH1071", prereq=PrereqNode.course("MATH1052")),
+            course("MATH2001", prereq=PrereqNode.course("MATH1052")),
+            course("MATH3001", prereq=PrereqNode.course("MATH2001")),
+        ]
+
+        plan = build_plan(courses, completed=frozenset(), start=Semester(2026, S1))
+
+        assert plan.feasible
+        assert set(scheduled_codes(plan)) == {
+            "MATH1051", "MATH1052", "MATH1071", "MATH2001", "MATH3001",
+        }
+        assert semester_of(plan, "MATH1051") < semester_of(plan, "MATH1052")
+        assert semester_of(plan, "MATH1052") < semester_of(plan, "MATH1071")
+
+    def test_an_or_branch_satisfied_by_a_completed_course_is_not_a_cycle(self):
+        # A needs (B or DONE) and B needs A. DONE is already completed, so A is
+        # takeable immediately and B follows. Nothing here is cyclic.
+        courses = [
+            course(
+                "A",
+                prereq=PrereqNode.any_of(
+                    PrereqNode.course("B"), PrereqNode.course("DONE")
+                ),
+            ),
+            course("B", prereq=PrereqNode.course("A")),
+        ]
+
+        plan = build_plan(courses, completed=frozenset({"DONE"}), start=Semester(2026, S1))
+
+        assert plan.feasible
+        assert set(scheduled_codes(plan)) == {"A", "B"}
+
+    def test_a_genuine_cycle_is_still_detected(self):
+        # Guard against over-correcting: A<->B really is unsatisfiable.
+        courses = [
+            course("A", prereq=PrereqNode.course("B")),
+            course("B", prereq=PrereqNode.course("A")),
+        ]
+
+        plan = build_plan(courses, completed=frozenset(), start=Semester(2026, S1))
+
+        assert not plan.feasible
+        assert scheduled_codes(plan) == []
+        assert any("cycle" in d.message.lower() for d in plan.diagnostics)
+
+    def test_an_and_prerequisite_inside_a_loop_is_still_a_cycle(self):
+        # A needs (B and C); B needs A. The AND cannot be satisfied without B,
+        # so unlike the OR case this genuinely is circular.
+        courses = [
+            course(
+                "A",
+                prereq=PrereqNode.all_of(
+                    PrereqNode.course("B"), PrereqNode.course("C")
+                ),
+            ),
+            course("B", prereq=PrereqNode.course("A")),
+            course("C"),
+        ]
+
+        plan = build_plan(courses, completed=frozenset(), start=Semester(2026, S1))
+
+        assert not plan.feasible
+        assert scheduled_codes(plan) == ["C"]
+
+
+def test_a_childless_and_node_constrains_nothing():
+    # A malformed/empty `and` row rehydrated from the DB used to make the course
+    # permanently unplaceable and the whole plan infeasible.
+    courses = [course("SOLO", prereq=PrereqNode(node_type="and", children=()))]
+
+    plan = build_plan(courses, completed=frozenset(), start=Semester(2026, S1))
+
+    assert plan.feasible
+    assert scheduled_codes(plan) == ["SOLO"]
+
+
+class TestDiagnosticsTellTheTruth:
+    def test_only_courses_actually_in_the_cycle_are_blamed_for_it(self):
+        # A<->B is the real cycle; C and D merely depend on it.
+        courses = [
+            course("A", prereq=PrereqNode.course("B")),
+            course("B", prereq=PrereqNode.course("A")),
+            course("C", prereq=PrereqNode.course("B")),
+            course("D", prereq=PrereqNode.course("C")),
+        ]
+
+        plan = build_plan(courses, completed=frozenset(), start=Semester(2026, S1))
+        messages = [d.message for d in plan.diagnostics]
+        summary = next(m for m in messages if m.startswith("Prerequisite cycle detected"))
+
+        assert "A" in summary and "B" in summary
+        assert "C" not in summary and "D" not in summary
+        # …and the innocent ones are told they're blocked, not that they're the loop.
+        assert any("C cannot be scheduled because it is blocked by" in m for m in messages)
+        assert any("D cannot be scheduled because it is blocked by" in m for m in messages)
+        assert not any("C is part of an unsatisfiable" in m for m in messages)
+
+    def test_every_unplaced_course_gets_its_own_explanation(self):
+        courses = [
+            course("A", prereq=PrereqNode.course("B")),
+            course("B", prereq=PrereqNode.course("A")),
+        ]
+
+        plan = build_plan(courses, completed=frozenset(), start=Semester(2026, S1))
+
+        assert not plan.feasible
+        for code in ("A", "B"):
+            assert any(m.startswith(f"{code} is part of") for m in
+                       [d.message for d in plan.diagnostics])
+
+    def test_a_unit_capped_semester_does_not_claim_nothing_was_eligible(self):
+        # Six 3-unit courses, all eligible now, but only 2 fit in 8 units.
+        courses = [course(f"C{i}", units=3.0) for i in range(6)]
+
+        plan = build_plan(
+            courses, completed=frozenset(), start=Semester(2026, S1),
+            max_units_per_semester=8.0, target_courses_per_semester=4,
+        )
+        messages = [d.message for d in plan.diagnostics if d.severity == "info"]
+        first = next(m for m in messages if "2026 S1" in m)
+
+        # The cap is what bound in 2026 S1 — all six were eligible.
+        assert "fit within your 8-unit limit" in first
+        assert "were eligible" not in first
+
+    def test_a_course_bigger_than_the_cap_says_so(self):
+        courses = [course("THESIS", units=16.0)]
+
+        plan = build_plan(
+            courses, completed=frozenset(), start=Semester(2026, S1),
+            max_units_per_semester=8.0,
+        )
+
+        assert not plan.feasible
+        assert any("exceeds the 8-unit limit" in d.message for d in plan.diagnostics)
+
+
+class TestMalformedDataBlocksOneCourseNotThePlan:
+    def test_an_unknown_node_type_does_not_kill_the_whole_plan(self):
+        courses = [
+            course("FINE"),
+            course("BROKEN", prereq=PrereqNode(node_type="n_of", children=())),
+        ]
+
+        plan = build_plan(courses, completed=frozenset(), start=Semester(2026, S1))
+
+        # Unparseable, so BROKEN is let through with a manual-check warning
+        # rather than raising ValueError out of build_plan.
+        assert "FINE" in scheduled_codes(plan)
+        assert any(
+            "could not be parsed" in d.message and d.severity == "warning"
+            for d in plan.diagnostics
+        )
+
+    def test_a_course_node_with_no_code_does_not_crash_the_diagnostics(self):
+        courses = [
+            course("DEP", offerings=(S1,), prereq=PrereqNode(node_type="course", code=None)),
+        ]
+
+        plan = build_plan(courses, completed=frozenset(), start=Semester(2026, S1))
+
+        assert not plan.feasible
+        assert plan.diagnostics  # a message, not a TypeError

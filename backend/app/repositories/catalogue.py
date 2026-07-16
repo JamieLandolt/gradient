@@ -7,7 +7,12 @@ from typing import Any
 
 from supabase import Client
 
-from app.domain.planning.models import PlannableCourse, PrereqNode
+from app.domain.planning.models import PrereqNode
+
+# Ceiling on a full catalogue read. Comfortably above UQ's whole course list, so
+# it never truncates in practice — it exists so a runaway import can't turn every
+# planner request into an unbounded scan.
+MAX_COURSES = 5000
 
 
 def build_prereq_tree(rows: list[dict[str, Any]], code_by_id: dict[int, str]) -> PrereqNode | None:
@@ -40,11 +45,17 @@ class CatalogueRepository:
         self._db = db
 
     # ── Courses ───────────────────────────────────────────────────────────
-    def list_courses(self) -> list[dict[str, Any]]:
+    def list_courses(self, limit: int = MAX_COURSES) -> list[dict[str, Any]]:
+        """The catalogue, hard-bounded.
+
+        This feeds the planner, the recommendation candidate pool and the course
+        pickers, none of which want an unbounded read as the catalogue grows.
+        """
         return (
             self._db.table("courses")
             .select("id, code, title, units, description")
             .order("code")
+            .limit(limit)
             .execute()
             .data
         )
@@ -198,6 +209,22 @@ class CatalogueRepository:
         )
         return {row["course_id"]: row["raw_text"] for row in rows}
 
+    def get_offering_periods_batch(self, course_ids: list[int]) -> dict[int, frozenset[str]]:
+        """Offered study periods for each course id, in one query (not N)."""
+        if not course_ids:
+            return {}
+        rows = (
+            self._db.table("course_offerings")
+            .select("course_id, semester")
+            .in_("course_id", course_ids)
+            .execute()
+            .data
+        )
+        by_course: dict[int, set[str]] = {}
+        for row in rows:
+            by_course.setdefault(row["course_id"], set()).add(row["semester"])
+        return {cid: frozenset(by_course.get(cid, set())) for cid in course_ids}
+
     # ── Programs ──────────────────────────────────────────────────────────
     def list_programs(self) -> list[dict[str, Any]]:
         return (
@@ -217,25 +244,3 @@ class CatalogueRepository:
             .data
         )
 
-    # ── Planner inputs ────────────────────────────────────────────────────
-    def get_plannable_courses(self, codes: list[str]) -> list[PlannableCourse]:
-        if not codes:
-            return []
-        course_rows = (
-            self._db.table("courses")
-            .select("id, code, units")
-            .in_("code", codes)
-            .execute()
-            .data
-        )
-        plannable = []
-        for row in course_rows:
-            plannable.append(
-                PlannableCourse(
-                    code=row["code"],
-                    units=float(row["units"]),
-                    offerings=self.get_offering_periods(row["id"]),
-                    prereq=self.get_prereq_tree(row["id"]),
-                )
-            )
-        return plannable
