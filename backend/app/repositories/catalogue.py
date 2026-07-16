@@ -100,6 +100,28 @@ class CatalogueRepository:
             .data[0]
         )
 
+    def sync_offerings(self, course_id: int, offerings: list[tuple[int, str]]) -> int:
+        """Create any (year, semester) pair not already recorded for this course.
+
+        Never deletes — a semester a course was once offered in stays a valid
+        historical fact even if a later catalogue snapshot omits it (e.g. the
+        site trims very old archived rows). Returns how many were newly created.
+        """
+        existing = {
+            (row["year"], row["semester"])
+            for row in self._db.table("course_offerings")
+            .select("year, semester")
+            .eq("course_id", course_id)
+            .execute()
+            .data
+        }
+        created = 0
+        for year, semester in offerings:
+            if (year, semester) not in existing:
+                self.create_offering(course_id, year, semester)
+                created += 1
+        return created
+
     # ── Profile versions & assessments ────────────────────────────────────
     def get_verified_profile(self, course_id: int) -> dict[str, Any] | None:
         """Latest verified profile version with assessments and cut-offs."""

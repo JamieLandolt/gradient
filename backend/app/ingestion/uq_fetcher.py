@@ -34,6 +34,11 @@ _ECP_LINK = re.compile(
     r'href="(https://course-profiles\.uq\.edu\.au/course-profiles/[^"]+)"'
     r'\s+target="_blank"\s+class="profile-available"'
 )
+# Both current and archived offering rows use this same anchor class, so this
+# captures a course's full known offering history, not just its current one.
+_OFFERING_ROW = re.compile(
+    r'class="course-offering-year"[^>]*>\s*Semester\s+([12])\s*,\s*(\d{4})'
+)
 
 
 class RobotsDisallowedError(RuntimeError):
@@ -52,6 +57,20 @@ def find_current_ecp_url(catalogue_html: str) -> str | None:
     """Extract the current offering's ECP link from a catalogue page's HTML."""
     match = _ECP_LINK.search(catalogue_html)
     return match.group(1) if match else None
+
+
+def parse_offerings(catalogue_html: str) -> list[tuple[int, str]]:
+    """Every (year, semester) a catalogue page lists a course as offered in.
+
+    Summer-only offerings aren't recognised (rare, and the planning engine only
+    schedules S1/S2 anyway) — a row like that is silently skipped, not an error.
+    """
+    seen: list[tuple[int, str]] = []
+    for semester_digit, year in _OFFERING_ROW.findall(catalogue_html):
+        pair = (int(year), f"S{semester_digit}")
+        if pair not in seen:
+            seen.append(pair)
+    return seen
 
 
 def html_to_text(html: str) -> str:

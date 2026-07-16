@@ -21,6 +21,7 @@ from app.repositories.artifacts import ArtifactRepository
 from app.repositories.catalogue import CatalogueRepository
 from app.repositories.ingestion import IngestionRepository
 from app.repositories.students import StudentRepository
+from app.services.planner import PlannerService
 from app.services.tracking import TrackingService
 
 DEFAULT_RECOMMENDATION_LIMIT = 5
@@ -94,6 +95,7 @@ class AdvisoryService:
         tracking: TrackingService,
         providers: ProviderBundle,
         artifacts: ArtifactRepository,
+        planner: PlannerService,
     ):
         self._catalogue = catalogue
         self._students = students
@@ -101,6 +103,7 @@ class AdvisoryService:
         self._tracking = tracking
         self._providers = providers
         self._artifacts = artifacts
+        self._planner = planner
 
     # ── Recommendations (FR-3.7.x) ────────────────────────────────────────
     def recommend(
@@ -228,6 +231,27 @@ class AdvisoryService:
             standing = self._tracking.standing(user_id, enrolment_id)
             facts["secured percent"] = standing["secured_percent"]
             facts["projected grade"] = standing["projected_grade"]
+        # Course-planning facts (FR-3.9.3 + FR-3.6.4) — lets the assistant help with
+        # "what should I take next" without ever guessing a prerequisite outcome
+        # itself. Omitted (not an error) if the student hasn't picked a program yet.
+        try:
+            statuses = self._planner.prereq_status(user_id)
+        except ValidationFailedError:
+            statuses = []
+        if statuses:
+            eligible = sorted(
+                s["course_code"] for s in statuses
+                if s["prereq_status"] == "met" and not s["is_completed"]
+            )
+            blocked = sorted(
+                s["course_code"] for s in statuses if s["prereq_status"] == "not_met"
+            )
+            if eligible:
+                facts["required courses eligible to take now"] = ", ".join(eligible)
+            if blocked:
+                facts["required courses not yet eligible (prerequisites outstanding)"] = (
+                    ", ".join(blocked)
+                )
         return facts
 
     def ask(self, user_id: str, question: str, enrolment_id: int | None) -> dict[str, Any]:

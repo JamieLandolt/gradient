@@ -81,6 +81,9 @@ test('View opens a saved weekly plan inline, and Hide collapses it', async () =>
   fireEvent.click(viewButton)
 
   expect(await screen.findByText('COMP3506')).toBeInTheDocument()
+  // The specific assignment/task must be visible in the cell itself, not just
+  // in a hover-only tooltip.
+  expect(screen.getByText('Assignment 1 (30% · aiming for 65%)')).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Hide' })).toBeInTheDocument()
 
   fireEvent.click(screen.getByRole('button', { name: 'Hide' }))

@@ -53,6 +53,38 @@ test('streams the assistant answer into a chat bubble', async () => {
   expect(screen.getByText('How am I doing?')).toBeInTheDocument()
 })
 
+test('Enter submits the question, Shift+Enter inserts a new line', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockImplementation((url: string) => {
+      if (String(url).includes('/assistant/ask/stream')) {
+        return Promise.resolve(
+          new Response('Answer.', { status: 200, headers: { 'Content-Type': 'text/plain' } }),
+        )
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify(envelope([])), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+    }),
+  )
+
+  renderPage()
+
+  const input = await screen.findByLabelText('Your question')
+
+  // Shift+Enter must not submit — it's a newline inside the question.
+  fireEvent.change(input, { target: { value: 'Line one' } })
+  fireEvent.keyDown(input, { key: 'Enter', shiftKey: true })
+  expect(screen.queryByText('Answer.')).not.toBeInTheDocument()
+
+  // Plain Enter submits.
+  fireEvent.keyDown(input, { key: 'Enter' })
+  expect(await screen.findByText('Answer.')).toBeInTheDocument()
+})
+
 test('shows a typing indicator that persists after the first chunk arrives', async () => {
   let releaseSecondChunk: () => void = () => {}
   const secondChunkGate = new Promise<void>((resolve) => {

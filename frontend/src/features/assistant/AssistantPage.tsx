@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
-import type { FormEvent } from 'react'
+import type { FormEvent, KeyboardEvent } from 'react'
 
 import { ApiError, apiClient, streamPost } from '../../lib/apiClient'
 import type { EnrolmentSummary } from '../../types/api'
@@ -32,6 +32,13 @@ export function AssistantPage() {
       next[next.length - 1] = { role: 'assistant', text: last.text + chunk }
       return next
     })
+  }
+
+  function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault()
+      event.currentTarget.form?.requestSubmit()
+    }
   }
 
   async function handleSubmit(event: FormEvent) {
@@ -126,11 +133,14 @@ export function AssistantPage() {
             ))}
           </select>
         )}
-        <input
+        <textarea
           aria-label="Your question"
-          placeholder="e.g. What do I need on my final?"
+          className="assistant-question"
+          placeholder="e.g. What do I need on my final? (Shift+Enter for a new line)"
+          rows={3}
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
+          onKeyDown={handleKeyDown}
         />
         <button type="submit" disabled={isStreaming || !question.trim()}>
           {isStreaming ? 'Answering…' : 'Ask'}

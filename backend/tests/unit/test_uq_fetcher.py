@@ -17,6 +17,7 @@ from app.ingestion.uq_fetcher import (
     fetch_ecp_text,
     find_current_ecp_url,
     html_to_text,
+    parse_offerings,
     reset_throttle,
 )
 
@@ -178,6 +179,47 @@ def test_find_current_ecp_url_picks_the_first_non_archive_link():
 def test_find_current_ecp_url_is_none_when_only_archived_offerings_exist():
     archive_only = CATALOGUE_HTML_WITH_ECP.split("</tr>", 1)[1]  # drop the current offering
     assert find_current_ecp_url(archive_only) is None
+
+
+# ── Offering (year, semester) parsing ────────────────────────────────────────
+CATALOGUE_HTML_WITH_OFFERINGS = """
+<tr id='course-offering-2'>
+<td>
+<a id='course-offering-2-sem' class="course-offering-year"
+   href="/course.html?course_code=COMP3506&offer=53544c554332494e&year=2025">
+Semester 2, 2025 (28/07/2025 - 22/11/2025)</a>
+</td>
+</tr>
+<tr id='course-offering-3'>
+<td>
+<a id='course-offering-3-sem' class="course-offering-year"
+   href="/course.html?course_code=COMP3506&offer=53544c554332494e&year=2024">
+Semester 2, 2024 (22/07/2024 - 18/11/2024)</a>
+</td>
+</tr>
+<tr id='course-offering-4'>
+<td>
+<a id='course-offering-4-sem' class="course-offering-year"
+   href="/course.html?course_code=COMP3506&offer=53544c554332494e&year=2024">
+Semester 1, 2024 (26/02/2024 - 22/06/2024)</a>
+</td>
+</tr>
+"""
+
+
+def test_parse_offerings_extracts_every_year_and_semester():
+    assert parse_offerings(CATALOGUE_HTML_WITH_OFFERINGS) == [
+        (2025, "S2"), (2024, "S2"), (2024, "S1"),
+    ]
+
+
+def test_parse_offerings_dedupes_repeated_rows():
+    doubled = CATALOGUE_HTML_WITH_OFFERINGS + CATALOGUE_HTML_WITH_OFFERINGS
+    assert parse_offerings(doubled) == [(2025, "S2"), (2024, "S2"), (2024, "S1")]
+
+
+def test_parse_offerings_is_empty_for_a_page_with_no_offering_rows():
+    assert parse_offerings("<p>no offerings table here</p>") == []
 
 
 def _make_ecp_fetcher(monkeypatch, handler, robots=_allow_robots, cache_dir=None, throttle=0.0):

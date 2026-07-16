@@ -643,15 +643,14 @@ def build_client(
     app.dependency_overrides[deps.get_student_repo] = lambda: students
     app.dependency_overrides[deps.get_artifact_repo] = lambda: artifacts
     app.dependency_overrides[deps.get_tracking_service] = lambda: tracking
-    app.dependency_overrides[deps.get_planner_service] = lambda: PlannerService(
-        catalogue, students, artifacts
-    )
+    planner_service = PlannerService(catalogue, students, artifacts)
+    app.dependency_overrides[deps.get_planner_service] = lambda: planner_service
     app.dependency_overrides[deps.get_ingestion_repo] = lambda: ingestion
     app.dependency_overrides[deps.get_ingestion_service] = lambda: IngestionService(
         ingestion, providers
     )
     app.dependency_overrides[deps.get_advisory_service] = lambda: AdvisoryService(
-        catalogue, students, ingestion, tracking, providers, artifacts
+        catalogue, students, ingestion, tracking, providers, artifacts, planner_service
     )
     app.dependency_overrides[deps.get_weekly_study_plan_service] = (
         lambda: WeeklyStudyPlanService(students, tracking, artifacts)

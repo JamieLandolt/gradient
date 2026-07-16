@@ -82,8 +82,9 @@ def get_advisory_service(
     tracking: TrackingService = Depends(get_tracking_service),
     providers: ProviderBundle = Depends(get_providers_dep),
     artifacts: ArtifactRepository = Depends(get_artifact_repo),
+    planner: PlannerService = Depends(get_planner_service),
 ) -> AdvisoryService:
-    return AdvisoryService(catalogue, students, ingestion, tracking, providers, artifacts)
+    return AdvisoryService(catalogue, students, ingestion, tracking, providers, artifacts, planner)
 
 
 def get_current_curator(

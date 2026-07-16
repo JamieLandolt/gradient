@@ -26,8 +26,14 @@ from load_seed import load_backend_env  # noqa: E402
 
 from app.config import Settings  # noqa: E402
 from app.core.db import get_supabase_client  # noqa: E402
-from app.ingestion.uq_fetcher import UQCourseFetcher, course_url  # noqa: E402
+from app.ingestion.uq_fetcher import (  # noqa: E402
+    UQCourseFetcher,
+    course_url,
+    html_to_text,
+    parse_offerings,
+)
 from app.providers.factory import get_providers  # noqa: E402
+from app.repositories.catalogue import CatalogueRepository  # noqa: E402
 from app.repositories.ingestion import IngestionRepository  # noqa: E402
 
 CACHE_DIR = REPO_ROOT / "seed" / "data" / "uq_html_cache"
@@ -43,8 +49,15 @@ def load_codes() -> list[str]:
     return codes
 
 
-def import_course(repo: IngestionRepository, providers, fetcher: UQCourseFetcher, code: str) -> str:
-    text = fetcher.fetch_text(code)
+def import_course(
+    repo: IngestionRepository,
+    catalogue: CatalogueRepository,
+    providers,
+    fetcher: UQCourseFetcher,
+    code: str,
+) -> str:
+    html = fetcher.fetch_html(code)
+    text = html_to_text(html)
     # Anchor the extractor on the intended code (the page also names prereq codes).
     payload = f"Course code: {code}\n\n{text}"
     extracted = providers.extraction.extract(payload)
@@ -74,10 +87,18 @@ def import_course(repo: IngestionRepository, providers, fetcher: UQCourseFetcher
         ),
         providers.embeddings.model_name,
     )
+    # Offerings (which year/semester the course can actually be enrolled in)
+    # were never synced by this importer — a course with no offering rows
+    # can be imported and searched, but never enrolled in. Runs unconditionally
+    # (not just for was_created) so re-running the importer refreshes stale
+    # offering data on courses that already exist too.
+    offerings = parse_offerings(html)
+    new_offerings = catalogue.sync_offerings(course["id"], offerings)
     return (
         f"{course['code']}: {version['status']} version, "
         f"{len(extracted.assessments)} assessments, "
-        f"prereq={'yes' if extracted.prerequisite_raw else 'none'}"
+        f"prereq={'yes' if extracted.prerequisite_raw else 'none'}, "
+        f"offerings={len(offerings)} ({new_offerings} new)"
     )
 
 
@@ -93,7 +114,9 @@ def main() -> None:
         )
 
     providers = get_providers(settings)
-    repo = IngestionRepository(get_supabase_client(settings))
+    db = get_supabase_client(settings)
+    repo = IngestionRepository(db)
+    catalogue = CatalogueRepository(db)
     fetcher = UQCourseFetcher(cache_dir=CACHE_DIR)
 
     codes = load_codes()
@@ -102,7 +125,7 @@ def main() -> None:
     try:
         for code in codes:
             try:
-                print("  " + import_course(repo, providers, fetcher, code))
+                print("  " + import_course(repo, catalogue, providers, fetcher, code))
                 ok += 1
             except Exception as exc:  # keep going; log and skip
                 print(f"  {code}: SKIPPED — {type(exc).__name__}: {str(exc)[:120]}")

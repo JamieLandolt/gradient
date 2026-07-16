@@ -308,6 +308,16 @@ function TargetsEditor() {
   )
 }
 
+// `focus` is already "COURSE_CODE — Assessment name (weight% · aiming for
+// target%, due date)" (see app.domain.study.weekly_planner._focus_text) — strip
+// the redundant course-code prefix so the cell can show the assignment/task
+// itself instead of just repeating the course code.
+function assessmentDetail(block: WeeklyStudyBlock): string {
+  const marker = ' — '
+  const index = block.focus.indexOf(marker)
+  return index === -1 ? block.focus : block.focus.slice(index + marker.length)
+}
+
 function WeeklyBlocksView({ blocks }: { blocks: WeeklyStudyBlock[] }) {
   const byCell = new Map<string, WeeklyStudyBlock>()
   for (const block of blocks) {
@@ -318,7 +328,13 @@ function WeeklyBlocksView({ blocks }: { blocks: WeeklyStudyBlock[] }) {
       cellClass={(day, hour) => (byCell.has(slotKey(day, hour)) ? 'filled' : '')}
       cellContent={(day, hour) => {
         const block = byCell.get(slotKey(day, hour))
-        return block ? <span title={block.focus}>{block.course_code}</span> : null
+        if (!block) return null
+        return (
+          <span className="week-slot-detail" title={block.focus}>
+            <strong>{block.course_code}</strong>
+            <span>{assessmentDetail(block)}</span>
+          </span>
+        )
       }}
     />
   )

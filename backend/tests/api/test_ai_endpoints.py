@@ -383,6 +383,25 @@ class TestAdvisory:
         assert "GPA" in answer
         assert "authoritative" in answer
 
+    def test_assistant_gets_course_planning_facts_once_a_program_is_selected(self):
+        # No program selected yet: planning facts are simply absent, not an error.
+        client, _, _ = build_client(user=ALICE)
+        no_program_answer = client.post(
+            "/api/v1/assistant/ask", json={"question": "What should I take next?"}
+        ).json()["data"]["answer"]
+        assert "eligible to take now" not in no_program_answer
+
+        client.put("/api/v1/planner/programs", json={"program_ids": [1]})
+        answer = client.post(
+            "/api/v1/assistant/ask", json={"question": "What should I take next?"}
+        ).json()["data"]["answer"]
+
+        # CSSE1001 and MATH1051 have no prereqs; COMP3506 needs CSSE1001 first.
+        assert "eligible to take now" in answer
+        assert "CSSE1001" in answer
+        assert "not yet eligible" in answer
+        assert "COMP3506" in answer
+
 
 class TestPersistence:
     def test_recommendations_persist_reload_list_and_delete(self):

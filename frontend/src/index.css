@@ -241,6 +241,13 @@ th {
 .stacked-form { display: flex; flex-direction: column; gap: 0.8rem; max-width: 22rem; }
 .stacked-form label { display: flex; flex-direction: column; gap: 0.3rem; font-weight: 500; }
 .inline-form { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; margin: 1rem 0 1.4rem; }
+.assistant-question {
+  flex: 1 1 28rem;
+  min-width: 16rem;
+  resize: vertical;
+  font-family: inherit;
+  line-height: 1.4;
+}
 
 /* ── Auth pages ──
    The class was in the markup but had no rules at all, so login sat hard against
@@ -545,10 +552,37 @@ a { color: var(--accent-bright); }
   border-color: rgba(251, 113, 133, 0.4);
 }
 .week-slot.filled {
-  background: rgba(139, 92, 246, 0.3);
-  border-color: var(--accent);
-  font-size: 0.62rem;
-  font-weight: 600;
+  /* Higher-opacity fill + explicit bright text: these cells are rendered as a
+     disabled <button> (view-only, not editable), which otherwise inherits the
+     generic button:disabled { opacity: 0.55 } fade meant for actually-inactive
+     controls — that fade made the generated plan's text hard to read. */
+  background: rgba(139, 92, 246, 0.55);
+  border-color: var(--accent-bright);
+  color: var(--text);
+  font-size: 0.64rem;
+  font-weight: 700;
+  opacity: 1;
+  min-height: 3.4rem;
+  display: flex;
+  align-items: stretch;
+}
+.week-slot-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.2rem 0.25rem;
+  height: 100%;
+  text-align: left;
+  line-height: 1.2;
+}
+.week-slot-detail strong { font-size: 0.68rem; }
+.week-slot-detail span {
+  font-weight: 500;
+  font-size: 0.6rem;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
 }
 .tag-study, .tag-blocked {
   font-weight: 600;
