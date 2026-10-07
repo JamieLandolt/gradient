@@ -24,9 +24,12 @@ def _reset_recommend_cache():
     process, see advisory.py), so it must not leak between tests — otherwise a
     cache hit here can return a stale result from a different test's isolated
     fake database, keyed only by (user_id, interests, completed, limit)."""
-    advisory._recommend_cache.clear()
+    caches = (advisory._recommend_cache, advisory._embed_cache, advisory._planning_facts_cache)
+    for cache in caches:
+        cache.clear()
     yield
-    advisory._recommend_cache.clear()
+    for cache in caches:
+        cache.clear()
 
 
 @pytest.fixture()

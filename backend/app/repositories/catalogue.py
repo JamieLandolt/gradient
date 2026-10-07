@@ -115,12 +115,16 @@ class CatalogueRepository:
             .execute()
             .data
         }
-        created = 0
-        for year, semester in offerings:
-            if (year, semester) not in existing:
-                self.create_offering(course_id, year, semester)
-                created += 1
-        return created
+        missing = [
+            {"course_id": course_id, "year": year, "semester": semester}
+            for year, semester in dict.fromkeys(offerings)
+            if (year, semester) not in existing
+        ]
+        # One insert, not one per row: a course lists ~35 historical offerings and
+        # each round-trip to the hosted database costs ~0.6s.
+        if missing:
+            self._db.table("course_offerings").insert(missing).execute()
+        return len(missing)
 
     # ── Profile versions & assessments ────────────────────────────────────
     def get_verified_profile(self, course_id: int) -> dict[str, Any] | None:

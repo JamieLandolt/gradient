@@ -371,6 +371,48 @@ class TestAdvisory:
         results = response.json()["data"]
         assert results[0]["code"] == "COMP3506"
 
+    def test_repeated_searches_embed_the_query_only_once(self, monkeypatch):
+        # The embedding call is billed; the same text always embeds the same way.
+        from app.providers.mock.embeddings import MockEmbeddingProvider
+
+        calls: list[str] = []
+        original = MockEmbeddingProvider.embed
+
+        def counting(self, text):
+            calls.append(text)
+            return original(self, text)
+
+        monkeypatch.setattr(MockEmbeddingProvider, "embed", counting)
+        client, _, _ = build_client(user=None)
+
+        for query in ("Algorithms", "  algorithms ", "ALGORITHMS"):
+            assert client.get("/api/v1/search/courses", params={"q": query}).status_code == 200
+        assert client.get("/api/v1/search/courses", params={"q": "databases"}).status_code == 200
+
+        assert len(calls) == 2  # one per distinct query, ignoring case and spacing
+
+    def test_assistant_planning_facts_are_not_recomputed_for_every_question(self, monkeypatch):
+        from app.services.planner import PlannerService
+
+        calls: list[str] = []
+        original = PlannerService.prereq_status
+
+        def counting(self, user_id):
+            calls.append(user_id)
+            return original(self, user_id)
+
+        monkeypatch.setattr(PlannerService, "prereq_status", counting)
+        client, _, _ = build_client(user=ALICE)
+        client.put("/api/v1/planner/programs", json={"program_ids": [1]})
+
+        for _ in range(3):
+            answer = client.post(
+                "/api/v1/assistant/ask", json={"question": "What next?"}
+            ).json()["data"]["answer"]
+            assert "eligible to take now" in answer
+
+        assert len(calls) == 1
+
     def test_assistant_answers_with_grounded_facts(self):
         client, _, _ = build_client(user=ALICE)
 

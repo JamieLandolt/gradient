@@ -42,6 +42,20 @@ _WORD = re.compile(r"[a-z]{3,}")
 _RECOMMEND_CACHE_TTL_S = 300.0
 _recommend_cache: dict[tuple[Any, ...], tuple[float, dict[str, Any]]] = {}
 
+# Search embeds every query through a billed API. Embeddings of the same text are
+# deterministic, so a short-lived, size-bounded cache is safe and spares the
+# repeat calls (people re-run searches, and the page fires per submit).
+_EMBED_CACHE_TTL_S = 600.0
+_EMBED_CACHE_MAX = 256
+_embed_cache: dict[str, tuple[float, list[float]]] = {}
+
+# The assistant's course-planning facts cost several database round-trips
+# (prereq_status loads programs, courses, and every prerequisite tree), and they
+# only change when the student's enrolments or programs do. A brief per-user TTL
+# keeps follow-up questions in one chat fast without serving stale facts for long.
+_PLANNING_FACTS_TTL_S = 60.0
+_planning_facts_cache: dict[str, tuple[float, dict[str, str]]] = {}
+
 
 def _forget_cached_recommendations(user_id: str) -> None:
     """Drop every cached recommendation set for one user.
@@ -217,8 +231,20 @@ class AdvisoryService:
     def search(self, query: str, limit: int = DEFAULT_SEARCH_LIMIT) -> list[dict[str, Any]]:
         if not query.strip():
             raise ValidationFailedError("Provide a search query")
+        return self._ingestion.match_courses(self._embed_cached(query), limit)
+
+    def _embed_cached(self, query: str) -> list[float]:
+        key = " ".join(query.lower().split())
+        now = time.monotonic()
+        hit = _embed_cache.get(key)
+        if hit is not None and now - hit[0] < _EMBED_CACHE_TTL_S:
+            return hit[1]
         embedding = self._providers.embeddings.embed(query)
-        return self._ingestion.match_courses(embedding, limit)
+        if len(_embed_cache) >= _EMBED_CACHE_MAX:
+            # Drop the oldest entry rather than grow without bound.
+            del _embed_cache[min(_embed_cache, key=lambda k: _embed_cache[k][0])]
+        _embed_cache[key] = (now, embedding)
+        return embedding
 
     # ── Assistant (FR-3.9.3) ──────────────────────────────────────────────
     def _assemble_facts(self, user_id: str, enrolment_id: int | None) -> dict[str, Any]:
@@ -231,27 +257,34 @@ class AdvisoryService:
             standing = self._tracking.standing(user_id, enrolment_id)
             facts["secured percent"] = standing["secured_percent"]
             facts["projected grade"] = standing["projected_grade"]
-        # Course-planning facts (FR-3.9.3 + FR-3.6.4) — lets the assistant help with
-        # "what should I take next" without ever guessing a prerequisite outcome
-        # itself. Omitted (not an error) if the student hasn't picked a program yet.
+        facts.update(self._planning_facts(user_id))
+        return facts
+
+    def _planning_facts(self, user_id: str) -> dict[str, str]:
+        """Course-planning facts (FR-3.9.3 + FR-3.6.4) — lets the assistant help with
+        "what should I take next" without ever guessing a prerequisite outcome
+        itself. Empty (not an error) if the student hasn't picked a program yet."""
+        now = time.monotonic()
+        hit = _planning_facts_cache.get(user_id)
+        if hit is not None and now - hit[0] < _PLANNING_FACTS_TTL_S:
+            return hit[1]
         try:
             statuses = self._planner.prereq_status(user_id)
         except ValidationFailedError:
-            statuses = []
-        if statuses:
-            eligible = sorted(
-                s["course_code"] for s in statuses
-                if s["prereq_status"] == "met" and not s["is_completed"]
+            return {}  # not cached: picking a program should take effect at once
+        facts: dict[str, str] = {}
+        eligible = sorted(
+            s["course_code"] for s in statuses
+            if s["prereq_status"] == "met" and not s["is_completed"]
+        )
+        blocked = sorted(s["course_code"] for s in statuses if s["prereq_status"] == "not_met")
+        if eligible:
+            facts["required courses eligible to take now"] = ", ".join(eligible)
+        if blocked:
+            facts["required courses not yet eligible (prerequisites outstanding)"] = (
+                ", ".join(blocked)
             )
-            blocked = sorted(
-                s["course_code"] for s in statuses if s["prereq_status"] == "not_met"
-            )
-            if eligible:
-                facts["required courses eligible to take now"] = ", ".join(eligible)
-            if blocked:
-                facts["required courses not yet eligible (prerequisites outstanding)"] = (
-                    ", ".join(blocked)
-                )
+        _planning_facts_cache[user_id] = (now, facts)
         return facts
 
     def ask(self, user_id: str, question: str, enrolment_id: int | None) -> dict[str, Any]:

@@ -140,3 +140,31 @@ test('shows a typing indicator that persists after the first chunk arrives', asy
     'You need 74% on the final.',
   )
 })
+
+test('Enter that confirms an input-method candidate does not submit', async () => {
+  const fetchMock = vi.fn().mockImplementation((url: string) => {
+    if (String(url).includes('/assistant/ask/stream')) {
+      return Promise.resolve(
+        new Response('Answer.', { status: 200, headers: { 'Content-Type': 'text/plain' } }),
+      )
+    }
+    return Promise.resolve(
+      new Response(JSON.stringify(envelope([])), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+  })
+  vi.stubGlobal('fetch', fetchMock)
+
+  renderPage()
+
+  const input = await screen.findByLabelText('Your question')
+  fireEvent.change(input, { target: { value: 'ni hao' } })
+  fireEvent.keyDown(input, { key: 'Enter', isComposing: true })
+
+  expect(
+    fetchMock.mock.calls.some(([url]) => String(url).includes('/assistant/ask/stream')),
+  ).toBe(false)
+  expect(screen.queryByText('Answer.')).not.toBeInTheDocument()
+})

@@ -37,7 +37,8 @@ _ECP_LINK = re.compile(
 # Both current and archived offering rows use this same anchor class, so this
 # captures a course's full known offering history, not just its current one.
 _OFFERING_ROW = re.compile(
-    r'class="course-offering-year"[^>]*>\s*Semester\s+([12])\s*,\s*(\d{4})'
+    r'class="course-offering-year"[^>]*>\s*(?:Semester\s+([12])|(Summer)\s+Semester)'
+    r'\s*,\s*(\d{4})'
 )
 
 
@@ -62,12 +63,12 @@ def find_current_ecp_url(catalogue_html: str) -> str | None:
 def parse_offerings(catalogue_html: str) -> list[tuple[int, str]]:
     """Every (year, semester) a catalogue page lists a course as offered in.
 
-    Summer-only offerings aren't recognised (rare, and the planning engine only
-    schedules S1/S2 anyway) — a row like that is silently skipped, not an error.
+    Semester is 'S1', 'S2' or 'SUMMER'. The planner only schedules S1/S2, but
+    summer offerings are still real and valid to enrol in.
     """
     seen: list[tuple[int, str]] = []
-    for semester_digit, year in _OFFERING_ROW.findall(catalogue_html):
-        pair = (int(year), f"S{semester_digit}")
+    for semester_digit, summer, year in _OFFERING_ROW.findall(catalogue_html):
+        pair = (int(year), "SUMMER" if summer else f"S{semester_digit}")
         if pair not in seen:
             seen.append(pair)
     return seen

@@ -8,6 +8,13 @@ from supabase import Client
 from app.domain.planning.models import PrereqNode
 from app.providers.interfaces import ExtractedProfile
 
+# Postgres SQLSTATE for unique_violation, surfaced by PostgREST as `code`.
+_UNIQUE_VIOLATION = "23505"
+
+
+def _is_unique_violation(exc: Exception) -> bool:
+    return getattr(exc, "code", None) == _UNIQUE_VIOLATION
+
 
 class IngestionRepository:
     def __init__(self, db: Client):
@@ -24,30 +31,44 @@ class IngestionRepository:
         course's dependents already rely on. Only a course this call brought
         into existence is safe to attach extracted prerequisites to.
         """
-        existing = (
+        existing = self._find_course(extracted.course_code)
+        if existing:
+            return existing, False
+        try:
+            created = (
+                self._db.table("courses")
+                .insert(
+                    {
+                        "code": extracted.course_code,
+                        "title": extracted.course_title,
+                        "units": extracted.units,
+                        "description": extracted.description,
+                        "data_source": "import",
+                    }
+                )
+                .execute()
+                .data[0]
+            )
+        except Exception as exc:  # noqa: BLE001 — only a unique race is recoverable
+            if not _is_unique_violation(exc):
+                raise
+            # A concurrent identical submission inserted it between our lookup and
+            # insert. Reuse theirs; it is theirs to attach prerequisites to.
+            winner = self._find_course(extracted.course_code)
+            if winner is None:
+                raise
+            return winner, False
+        return created, True
+
+    def _find_course(self, code: str) -> dict[str, Any] | None:
+        rows = (
             self._db.table("courses")
             .select("id, code, title, units, description")
-            .eq("code", extracted.course_code)
+            .eq("code", code)
             .execute()
             .data
         )
-        if existing:
-            return existing[0], False
-        created = (
-            self._db.table("courses")
-            .insert(
-                {
-                    "code": extracted.course_code,
-                    "title": extracted.course_title,
-                    "units": extracted.units,
-                    "description": extracted.description,
-                    "data_source": "import",
-                }
-            )
-            .execute()
-            .data[0]
-        )
-        return created, True
+        return rows[0] if rows else None
 
     # ── Profile versions ──────────────────────────────────────────────────
     def find_profile_version(self, course_id: int, version_label: str) -> dict[str, Any] | None:
@@ -69,21 +90,31 @@ class IngestionRepository:
         source_ref: str,
         provider_name: str,
     ) -> dict[str, Any]:
-        version = (
-            self._db.table("profile_versions")
-            .insert(
-                {
-                    "course_id": course_id,
-                    "version_label": extracted.version_label,
-                    "source_type": source_type,
-                    "source_ref": source_ref,
-                    "extraction_provider": provider_name,
-                    "status": "draft",
-                }
+        try:
+            version = (
+                self._db.table("profile_versions")
+                .insert(
+                    {
+                        "course_id": course_id,
+                        "version_label": extracted.version_label,
+                        "source_type": source_type,
+                        "source_ref": source_ref,
+                        "extraction_provider": provider_name,
+                        "status": "draft",
+                    }
+                )
+                .execute()
+                .data[0]
             )
-            .execute()
-            .data[0]
-        )
+        except Exception as exc:  # noqa: BLE001 — only a unique race is recoverable
+            if not _is_unique_violation(exc):
+                raise
+            # A concurrent identical submission created this version first; its
+            # assessments and cut-offs are theirs to write, so don't duplicate them.
+            winner = self.find_profile_version(course_id, extracted.version_label)
+            if winner is None:
+                raise
+            return winner
         assessment_rows = [
             {
                 "profile_version_id": version["id"],

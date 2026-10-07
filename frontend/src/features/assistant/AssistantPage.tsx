@@ -35,6 +35,10 @@ export function AssistantPage() {
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    // Enter also confirms a candidate in an input method (pinyin, kana, ...).
+    // keyCode 229 covers Safari, which reports the confirming keydown as
+    // composing-ended; sending then would submit a half-typed question.
+    if (event.nativeEvent.isComposing || event.keyCode === 229) return
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
       event.currentTarget.form?.requestSubmit()

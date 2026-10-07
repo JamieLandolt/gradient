@@ -213,6 +213,14 @@ def test_parse_offerings_extracts_every_year_and_semester():
     ]
 
 
+def test_parse_offerings_recognises_summer_semester():
+    html = (
+        """<a id='course-offering-4-sem' class="course-offering-year"
+        href="/course.html?course_code=MATH1051&offer=1">Summer Semester, 2026 (30/11/2026)</a>"""
+    )
+    assert parse_offerings(html) == [(2026, "SUMMER")]
+
+
 def test_parse_offerings_dedupes_repeated_rows():
     doubled = CATALOGUE_HTML_WITH_OFFERINGS + CATALOGUE_HTML_WITH_OFFERINGS
     assert parse_offerings(doubled) == [(2025, "S2"), (2024, "S2"), (2024, "S1")]

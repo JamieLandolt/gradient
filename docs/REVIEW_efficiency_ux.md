@@ -17,7 +17,7 @@ are a prioritised backlog. Severity: **P1** ship-blocking-ish, **P2** should-fix
    profile (version + assessments + cut-offs) separately in `assessment_rows`, `grade_cutoffs`,
    and again per standing/required-marks call. For a dashboard rendering many courses this
    repeats. *Fix:* memoise per request, or batch-load verified profiles for a set of course ids.
-3. **Search embeds every query live (P2).** `/search/courses` calls the embedding provider on
+3. **Search embeds every query live (P2) — ✅ fixed: 10-min size-bounded cache in `AdvisoryService._embed_cached`.** `/search/courses` calls the embedding provider on
    each keystroke-driven request with no debounce server-side and no caching of common queries.
    *Fix:* short-TTL cache on `(query → embedding)`, and debounce on the client.
 4. **Client over-fetch (P3).** Several pages fetch `/enrolments` independently
